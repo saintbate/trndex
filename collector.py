@@ -73,40 +73,146 @@ except ValueError:
     DEFAULT_GROK_AGENTIC_VOLUME_LIMIT = 12
 
 
-KEYWORD_CATEGORIES = {
-    "NBA": "Sports", "NFL": "Sports", "NHL": "Sports", "MLB": "Sports",
-    "UFC": "Sports", "FIFA": "Sports", "Premier League": "Sports",
-    "Lakers": "Sports", "Warriors": "Sports", "Yankees": "Sports",
-    "NBAPlayoffs": "Sports", "Super Bowl": "Sports", "Olympics": "Sports",
-    "AI": "Tech", "ChatGPT": "Tech", "OpenAI": "Tech", "Google": "Tech",
-    "Apple": "Tech", "NVIDIA": "Tech", "Tesla": "Tech", "Microsoft": "Tech",
-    "Elon Musk": "Tech", "TikTok": "Tech", "iPhone": "Tech",
-    "Bitcoin": "Crypto", "BTC": "Crypto", "Ethereum": "Crypto", "ETH": "Crypto",
-    "Crypto": "Crypto", "Solana": "Crypto", "NFT": "Crypto", "Blockchain": "Crypto",
-    "Congress": "Politics", "Senate": "Politics", "SCOTUS": "Politics",
-    "Supreme Court": "Politics", "White House": "Politics",
-    "Trump": "Politics", "Biden": "Politics", "Election": "Politics",
-    "Fed Rate": "Finance", "Stock Market": "Finance", "Wall Street": "Finance",
-    "Recession": "Finance", "Inflation": "Finance", "Tariff": "Finance",
-    "Beyoncé": "Culture", "Taylor Swift": "Culture", "Drake": "Culture",
-    "Grammys": "Culture", "Oscars": "Culture", "Met Gala": "Culture",
-    "Netflix": "Entertainment", "Disney": "Entertainment", "Marvel": "Entertainment",
-    "Anime": "Entertainment", "K-pop": "Entertainment", "BTS": "Entertainment",
-    "Breaking": "News", "BREAKING": "News", "RIP": "News",
-    "Climate": "Science", "NASA": "Science", "Space": "Science",
-    "Wordle": "Games", "Fortnite": "Games", "GTA": "Games",
-    "PlayStation": "Games", "Xbox": "Games", "Nintendo": "Games",
-    "Mental Health": "Health", "COVID": "Health", "Vaccine": "Health",
-}
+CATEGORY_RULES = [
+    {
+        "category": "Politics",
+        "hashtags": ["#election2026"],
+        "phrases": [
+            "supreme court", "white house", "executive order", "bipartisan",
+            "congress", "senate", "scotus", "president", "democrat",
+            "republican", "gop", "election", "impeach", "filibuster",
+        ],
+    },
+    {
+        "category": "Tech",
+        "hashtags": ["#ai"],
+        "phrases": [
+            "chatgpt", "openai", "google", "apple", "nvidia", "tesla",
+            "microsoft", "github", "android", "iphone", "ios", "samsung",
+            "amd", "intel", "copilot", "gemini", "claude", "gpt",
+            "anthropic", "meta",
+        ],
+    },
+    {
+        "category": "Crypto",
+        "hashtags": ["#crypto"],
+        "phrases": [
+            "bitcoin", "btc", "ethereum", "eth", "solana", "sol",
+            "dogecoin", "doge", "xrp", "blockchain", "defi", "nft",
+            "binance", "coinbase", "cardano", "polygon",
+        ],
+        "custom": lambda text, hashtags: (
+            has_word(text, "whale")
+            and (has_word(text, "buy") or has_word(text, "sell") or has_word(text, "alert"))
+        ),
+    },
+    {
+        "category": "Sports",
+        "phrases": [
+            "premier league", "champions league", "march madness",
+            "world cup", "super bowl", "grand prix", "olympics",
+            "lakers", "warriors", "celtics", "yankees", "dodgers",
+            "cowboys", "chiefs", "eagles", "lebron james",
+            "stephen curry", "lionel messi", "cristiano ronaldo",
+            "shohei ohtani", "caitlin clark",
+        ],
+        "any_words": ["nba", "nfl", "nhl", "mlb", "ufc", "fifa", "mls", "f1"],
+    },
+    {
+        "category": "Finance",
+        "phrases": [
+            "fed rate", "s&p 500", "dow jones", "nasdaq", "wall street",
+            "interest rate", "ipo", "earnings", "gdp", "core pce",
+            "cpi", "treasury", "recession", "inflation",
+        ],
+    },
+    {
+        "category": "News",
+        "hashtags": ["#breaking"],
+        "phrases": ["breaking", "rip", "shooting", "evacuation", "wildfire", "hurricane"],
+        "custom": lambda text, hashtags: (
+            has_word(text, "earthquake")
+            and not has_any_word(text, ["seismic", "geology", "tectonic"])
+        ),
+    },
+    {
+        "category": "Entertainment",
+        "phrases": [
+            "netflix", "disney+", "hulu", "hbo", "spotify", "grammy",
+            "oscar", "emmy", "tony", "billboard", "box office",
+            "streaming", "album", "trailer",
+        ],
+    },
+    {
+        "category": "Culture",
+        "hashtags": [
+            "#fridayvibes", "#fursuitfriday", "#motivationmonday",
+            "#mondaymotivation", "#throwbackthursday", "#tuesdaythoughts",
+            "#wednesdaywisdom", "#thursdaythoughts", "#fridayfeeling",
+            "#sundayfunday", "#selfcaresunday",
+        ],
+        "phrases": ["beyonce", "taylor swift", "drake", "kendrick", "rihanna"],
+    },
+    {
+        "category": "Science",
+        "phrases": ["nasa", "spacex", "climate", "cern", "telescope", "mars", "asteroid"],
+        "custom": lambda text, hashtags: (
+            has_word(text, "earthquake")
+            and has_any_word(text, ["seismic", "geology", "tectonic"])
+        ),
+    },
+    {
+        "category": "Games",
+        "phrases": [
+            "wordle", "fortnite", "minecraft", "gta", "playstation",
+            "xbox", "nintendo", "steam", "elden ring", "zelda",
+        ],
+    },
+    {
+        "category": "Health",
+        "hashtags": ["#mentalhealth"],
+        "phrases": ["who", "cdc", "vaccine", "pandemic", "flu"],
+        "custom": lambda text, hashtags: (
+            has_word(text, "virus")
+            and has_any_word(text, ["flu", "outbreak", "pandemic", "vaccine"])
+        ),
+    },
+]
 
 
-def classify_keyword(name: str) -> str:
-    """Classify using keyword map. Returns category or empty string."""
-    lower = name.lower().lstrip("#")
-    for keyword, cat in KEYWORD_CATEGORIES.items():
-        if keyword.lower() in lower:
-            return cat
-    return ""
+def has_phrase(text: str, phrase: str) -> bool:
+    return re.search(rf"(^|[^a-z0-9]){re.escape(phrase)}([^a-z0-9]|$)", text, re.IGNORECASE) is not None
+
+
+def has_word(text: str, word: str) -> bool:
+    return has_phrase(text, word)
+
+
+def has_any_word(text: str, words: list[str]) -> bool:
+    return any(has_word(text, word) for word in words)
+
+
+def extract_hashtags(text: str) -> set[str]:
+    return {tag.lower() for tag in re.findall(r"#[a-z0-9_]+", text, re.IGNORECASE)}
+
+
+def classify_keyword(name: str) -> str | None:
+    """Classify only high-confidence matches. Returns None when ambiguous."""
+    lower = name.lower()
+    hashtags = extract_hashtags(name)
+
+    for rule in CATEGORY_RULES:
+        if any(tag in hashtags for tag in rule.get("hashtags", [])):
+            return rule["category"]
+        if any(has_phrase(lower, phrase) for phrase in rule.get("phrases", [])):
+            return rule["category"]
+        if any(has_word(lower, word) for word in rule.get("any_words", [])):
+            return rule["category"]
+        custom = rule.get("custom")
+        if custom and custom(lower, hashtags):
+            return rule["category"]
+
+    return None
 
 
 def classify_with_grok(trend_names: list) -> dict:
@@ -154,22 +260,10 @@ def classify_with_grok(trend_names: list) -> dict:
 
 
 def classify_trends(trend_names: list) -> dict:
-    """Classify a batch of trend names. Uses keyword map first, Grok for unknowns."""
+    """Classify a batch of trend names using high-confidence keyword rules only."""
     results = {}
-    unknown = []
-
     for name in trend_names:
-        cat = classify_keyword(name)
-        if cat:
-            results[name] = cat
-        else:
-            unknown.append(name)
-
-    if unknown:
-        grok_results = classify_with_grok(unknown)
-        for name in unknown:
-            results[name] = grok_results.get(name, "Trending")
-
+        results[name] = classify_keyword(name)
     return results
 
 
@@ -219,15 +313,13 @@ def init_db():
 
 
 def store_snapshot(woeid: int, location_name: str, trends: list, use_grok_classify: bool = False):
-    """Store a batch of trends from one API call, with category classification."""
+    """Store a batch of trends from one API call with conservative category tags."""
     conn = get_conn()
     cur = conn.cursor()
     now = datetime.now(timezone.utc)
 
     trend_names = [t.get("trend_name", "Unknown") for t in trends]
-    categories = classify_trends(trend_names) if use_grok_classify else {
-        n: classify_keyword(n) or "Trending" for n in trend_names
-    }
+    categories = classify_trends(trend_names)
 
     for i, trend in enumerate(trends):
         name = trend.get("trend_name", "Unknown")
@@ -243,7 +335,7 @@ def store_snapshot(woeid: int, location_name: str, trends: list, use_grok_classi
                 name,
                 trend.get("tweet_count", 0) or 0,
                 i + 1,
-                categories.get(name, "Trending"),
+                categories.get(name),
             ),
         )
 

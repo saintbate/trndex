@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     // 1. Get current snapshot trends (rank = array index + 1)
     const currentTrends = await sql`
-      SELECT trend_name, rank, location_name, category
+      SELECT trend_name, rank, location_name
       FROM snapshots
       WHERE woeid = ${woeid}
         AND fetched_at = (
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
       else if (delta < 0) direction = "down";
 
       const sparkline = sparklineMap.get(row.trend_name) ?? [row.rank];
-      const category = row.category || classifyTrend(row.trend_name);
+      const category = classifyTrend(row.trend_name);
 
       return {
         trend_name: row.trend_name,

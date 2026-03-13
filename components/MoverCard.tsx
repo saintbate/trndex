@@ -1,11 +1,12 @@
 "use client";
 
 import { CATEGORY_COLORS } from "@/lib/categories";
+import type { TrendCategory } from "@/lib/categories";
 
 interface MoverCardProps {
   trendName: string;
   delta: number;
-  category: string;
+  category: TrendCategory | null;
   type: "gainer" | "loser";
 }
 
@@ -17,7 +18,7 @@ export default function MoverCard({
 }: MoverCardProps) {
   const isGainer = type === "gainer";
   const c = isGainer ? "#00E676" : "#FF5252";
-  const cc = CATEGORY_COLORS[category] || "#888";
+  const cc = category ? CATEGORY_COLORS[category] : null;
 
   return (
     <div
@@ -69,16 +70,18 @@ export default function MoverCard({
         >
           {isGainer ? "▲" : "▼"}
         </span>
-        <span
-          className="font-mono text-[7.5px] font-bold uppercase tracking-[0.08em] rounded px-1 py-px"
-          style={{
-            color: cc,
-            background: `${cc}12`,
-            border: `1px solid ${cc}25`,
-          }}
-        >
-          {category}
-        </span>
+        {category && cc && (
+          <span
+            className="font-mono text-[7.5px] font-bold uppercase tracking-[0.08em] rounded px-1 py-px"
+            style={{
+              color: cc,
+              background: `${cc}12`,
+              border: `1px solid ${cc}25`,
+            }}
+          >
+            {category}
+          </span>
+        )}
       </div>
     </div>
   );

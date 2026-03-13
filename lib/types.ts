@@ -1,3 +1,5 @@
+import type { TrendCategory } from "@/lib/categories";
+
 export interface TrendsMeta {
   current_snapshot: string;
   previous_snapshot: string | null;
@@ -19,7 +21,7 @@ export interface Trend {
   direction: "up" | "down" | "flat";
   is_new: boolean;
   sparkline: (number | null)[];
-  category: string;
+  category: TrendCategory | null;
 }
 
 export interface TrendsResponse {

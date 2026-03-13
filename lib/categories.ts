@@ -1,195 +1,263 @@
-const CATEGORY_MAP: Record<string, string> = {
-  // Sports
-  NBA: "Sports", NFL: "Sports", NHL: "Sports", MLB: "Sports",
-  UFC: "Sports", FIFA: "Sports", "Premier League": "Sports",
-  "Champions League": "Sports", "World Cup": "Sports",
-  Lakers: "Sports", Warriors: "Sports", Yankees: "Sports",
-  Celtics: "Sports", Dodgers: "Sports", Chiefs: "Sports",
-  Eagles: "Sports", Cowboys: "Sports", Knicks: "Sports",
-  "49ers": "Sports", Mets: "Sports", Braves: "Sports",
-  Steelers: "Sports", Bills: "Sports", Packers: "Sports",
-  NBAPlayoffs: "Sports", "March Madness": "Sports",
-  "Super Bowl": "Sports", "World Series": "Sports",
-  "Stanley Cup": "Sports", Olympics: "Sports",
-  "Luka Doncic": "Sports", LeBron: "Sports", Curry: "Sports",
-  Messi: "Sports", Ronaldo: "Sports", "Shohei Ohtani": "Sports",
-  Mahomes: "Sports", "Aaron Judge": "Sports",
-  "Jalen Brunson": "Sports", "Lamar Jackson": "Sports",
-  "Patrick Mahomes": "Sports", "Saquon Barkley": "Sports",
-  "Victor Wembanyama": "Sports", Wemby: "Sports",
-  "Caitlin Clark": "Sports", WNBA: "Sports",
-  Arsenal: "Sports", "Man City": "Sports", "Man United": "Sports",
-  Liverpool: "Sports", Barcelona: "Sports", "Real Madrid": "Sports",
-  "Serie A": "Sports", "La Liga": "Sports", Bundesliga: "Sports",
-  F1: "Sports", "Formula 1": "Sports", NASCAR: "Sports",
-  Tennis: "Sports", "US Open": "Sports", Wimbledon: "Sports",
-  Boxing: "Sports", MMA: "Sports",
+export type TrendCategory =
+  | "Tech"
+  | "Politics"
+  | "Sports"
+  | "Crypto"
+  | "Culture"
+  | "Finance"
+  | "News"
+  | "Entertainment"
+  | "Science"
+  | "Games"
+  | "Health";
 
-  // Tech
-  AI: "Tech", ChatGPT: "Tech", OpenAI: "Tech", Google: "Tech",
-  Apple: "Tech", NVIDIA: "Tech", Tesla: "Tech", Microsoft: "Tech",
-  "GPT-5": "Tech", Claude: "Tech", Gemini: "Tech", Anthropic: "Tech",
-  Meta: "Tech", Amazon: "Tech", Samsung: "Tech", iPhone: "Tech",
-  Android: "Tech", iPad: "Tech", MacBook: "Tech",
-  "Elon Musk": "Tech", "Tim Cook": "Tech", "Sam Altman": "Tech",
-  "Mark Zuckerberg": "Tech", "Satya Nadella": "Tech",
-  Copilot: "Tech", GitHub: "Tech", "VS Code": "Tech",
-  Midjourney: "Tech", "Stable Diffusion": "Tech", Sora: "Tech",
-  "Vision Pro": "Tech", VR: "Tech", AR: "Tech",
-  Robotics: "Tech", Neuralink: "Tech", SpaceX: "Tech",
-  Starship: "Tech", Starlink: "Tech",
-  TikTok: "Tech", Instagram: "Tech", Threads: "Tech",
-  YouTube: "Tech", Snapchat: "Tech", Reddit: "Tech",
-  "X Premium": "Tech", Twitter: "Tech",
-  Cybersecurity: "Tech", Hacking: "Tech",
-  Pixel: "Tech", OnePlus: "Tech",
-  AWS: "Tech", Azure: "Tech", "Google Cloud": "Tech",
+const CATEGORY_RULES: Array<{
+  category: TrendCategory;
+  hashtags?: string[];
+  phrases?: string[];
+  anyWords?: string[];
+  allWords?: string[];
+  custom?: (normalized: string, hashtags: Set<string>) => boolean;
+}> = [
+  {
+    category: "Politics",
+    hashtags: ["#election2026"],
+    phrases: [
+      "supreme court",
+      "white house",
+      "executive order",
+      "bipartisan",
+      "congress",
+      "senate",
+      "scotus",
+      "president",
+      "democrat",
+      "republican",
+      "gop",
+      "election",
+      "impeach",
+      "filibuster",
+    ],
+  },
+  {
+    category: "Tech",
+    hashtags: ["#ai"],
+    phrases: [
+      "chatgpt",
+      "openai",
+      "google",
+      "apple",
+      "nvidia",
+      "tesla",
+      "microsoft",
+      "github",
+      "android",
+      "iphone",
+      "ios",
+      "samsung",
+      "amd",
+      "intel",
+      "copilot",
+      "gemini",
+      "claude",
+      "gpt",
+      "anthropic",
+      "meta",
+    ],
+  },
+  {
+    category: "Crypto",
+    hashtags: ["#crypto"],
+    phrases: [
+      "bitcoin",
+      "btc",
+      "ethereum",
+      "eth",
+      "solana",
+      "sol",
+      "dogecoin",
+      "doge",
+      "xrp",
+      "blockchain",
+      "defi",
+      "nft",
+      "binance",
+      "coinbase",
+      "cardano",
+      "polygon",
+    ],
+    custom: (normalized) =>
+      hasWord(normalized, "whale") &&
+      (hasWord(normalized, "buy") ||
+        hasWord(normalized, "sell") ||
+        hasWord(normalized, "alert")),
+  },
+  {
+    category: "Sports",
+    phrases: [
+      "premier league",
+      "champions league",
+      "march madness",
+      "world cup",
+      "super bowl",
+      "grand prix",
+      "olympics",
+      "lakers",
+      "warriors",
+      "celtics",
+      "yankees",
+      "dodgers",
+      "cowboys",
+      "chiefs",
+      "eagles",
+      "lebron james",
+      "stephen curry",
+      "lionel messi",
+      "cristiano ronaldo",
+      "shohei ohtani",
+      "caitlin clark",
+    ],
+    anyWords: ["nba", "nfl", "nhl", "mlb", "ufc", "fifa", "mls", "f1"],
+  },
+  {
+    category: "Finance",
+    phrases: [
+      "fed rate",
+      "s&p 500",
+      "dow jones",
+      "nasdaq",
+      "wall street",
+      "interest rate",
+      "ipo",
+      "earnings",
+      "gdp",
+      "core pce",
+      "cpi",
+      "treasury",
+      "recession",
+      "inflation",
+    ],
+  },
+  {
+    category: "News",
+    hashtags: ["#breaking"],
+    phrases: ["breaking", "rip", "shooting", "evacuation", "wildfire", "hurricane"],
+    custom: (normalized) =>
+      hasWord(normalized, "earthquake") && !hasAnyWord(normalized, ["seismic", "geology", "tectonic"]),
+  },
+  {
+    category: "Entertainment",
+    phrases: [
+      "netflix",
+      "disney+",
+      "hulu",
+      "hbo",
+      "spotify",
+      "grammy",
+      "oscar",
+      "emmy",
+      "tony",
+      "billboard",
+      "box office",
+      "streaming",
+      "album",
+      "trailer",
+    ],
+  },
+  {
+    category: "Culture",
+    hashtags: [
+      "#fridayvibes",
+      "#fursuitfriday",
+      "#motivationmonday",
+      "#mondaymotivation",
+      "#throwbackthursday",
+      "#tuesdaythoughts",
+      "#wednesdaywisdom",
+      "#thursdaythoughts",
+      "#fridayfeeling",
+      "#sundayfunday",
+      "#selfcaresunday",
+    ],
+    phrases: ["beyonce", "taylor swift", "drake", "kendrick", "rihanna"],
+  },
+  {
+    category: "Science",
+    phrases: ["nasa", "spacex", "climate", "cern", "telescope", "mars", "asteroid"],
+    custom: (normalized) =>
+      hasWord(normalized, "earthquake") && hasAnyWord(normalized, ["seismic", "geology", "tectonic"]),
+  },
+  {
+    category: "Games",
+    phrases: [
+      "wordle",
+      "fortnite",
+      "minecraft",
+      "gta",
+      "playstation",
+      "xbox",
+      "nintendo",
+      "steam",
+      "elden ring",
+      "zelda",
+    ],
+  },
+  {
+    category: "Health",
+    hashtags: ["#mentalhealth"],
+    phrases: ["who", "cdc", "vaccine", "pandemic", "flu"],
+    custom: (normalized) =>
+      hasWord(normalized, "virus") && hasAnyWord(normalized, ["flu", "outbreak", "pandemic", "vaccine"]),
+  },
+];
 
-  // Crypto
-  Bitcoin: "Crypto", BTC: "Crypto", Ethereum: "Crypto", ETH: "Crypto",
-  Crypto: "Crypto", Solana: "Crypto", SOL: "Crypto",
-  Dogecoin: "Crypto", DOGE: "Crypto", XRP: "Crypto",
-  Cardano: "Crypto", ADA: "Crypto", Polygon: "Crypto",
-  Avalanche: "Crypto", AVAX: "Crypto",
-  NFT: "Crypto", NFTs: "Crypto", DeFi: "Crypto",
-  Binance: "Crypto", Coinbase: "Crypto",
-  "SEC Crypto": "Crypto", "Bitcoin ETF": "Crypto",
-  Altcoin: "Crypto", Memecoin: "Crypto",
-  Web3: "Crypto", Blockchain: "Crypto",
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-  // Politics
-  Congress: "Politics", Senate: "Politics", SCOTUS: "Politics",
-  "Supreme Court": "Politics", "White House": "Politics",
-  Democrat: "Politics", Republican: "Politics", Election: "Politics",
-  Biden: "Politics", Trump: "Politics", DeSantis: "Politics",
-  "AOC": "Politics", Pelosi: "Politics", McConnell: "Politics",
-  Governor: "Politics", Mayor: "Politics",
-  "Executive Order": "Politics", Impeach: "Politics",
-  NATO: "Politics", UN: "Politics", EU: "Politics",
-  Ukraine: "Politics", Russia: "Politics", China: "Politics",
-  Iran: "Politics", Israel: "Politics", Palestine: "Politics",
-  Gaza: "Politics", "Middle East": "Politics",
-  Immigration: "Politics", Border: "Politics",
-  "Gun Control": "Politics", Abortion: "Politics",
-  "2nd Amendment": "Politics",
-  "Project 2025": "Politics",
-  Indictment: "Politics", FBI: "Politics", DOJ: "Politics",
-  "Jan 6": "Politics", Insurrection: "Politics",
+function hasPhrase(text: string, phrase: string): boolean {
+  const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegex(phrase)}([^a-z0-9]|$)`, "i");
+  return pattern.test(text);
+}
 
-  // Finance
-  "Fed Rate": "Finance", "Interest Rate": "Finance",
-  "Stock Market": "Finance", "Wall Street": "Finance",
-  "S&P 500": "Finance", "S&P": "Finance",
-  Nasdaq: "Finance", "Dow Jones": "Finance",
-  Recession: "Finance", Inflation: "Finance",
-  "Federal Reserve": "Finance", "Jerome Powell": "Finance",
-  IPO: "Finance", Earnings: "Finance", Revenue: "Finance",
-  Dividend: "Finance", "Market Cap": "Finance",
-  "Bank of America": "Finance", "JP Morgan": "Finance",
-  "Goldman Sachs": "Finance", "Morgan Stanley": "Finance",
-  "Wells Fargo": "Finance", Citibank: "Finance",
-  "Housing Market": "Finance", Mortgage: "Finance",
-  GDP: "Finance", "Jobs Report": "Finance", Unemployment: "Finance",
-  Tariff: "Finance", Tariffs: "Finance",
-  "Trade War": "Finance",
+function hasWord(text: string, word: string): boolean {
+  return hasPhrase(text, word);
+}
 
-  // Culture
-  "Beyoncé": "Culture", "Taylor Swift": "Culture", Drake: "Culture",
-  "Travis Scott": "Culture", Rihanna: "Culture", Kanye: "Culture",
-  "Bad Bunny": "Culture", Kendrick: "Culture", "Nicki Minaj": "Culture",
-  "Doja Cat": "Culture", "Ice Spice": "Culture", SZA: "Culture",
-  "Tyler the Creator": "Culture", "21 Savage": "Culture",
-  Grammys: "Culture", "Met Gala": "Culture", Oscars: "Culture",
-  "Golden Globes": "Culture", Emmys: "Culture",
-  Coachella: "Culture", "Rolling Loud": "Culture",
-  "Kim Kardashian": "Culture", Kardashian: "Culture",
-  "MrBeast": "Culture", KSI: "Culture", Logan: "Culture",
-  Viral: "Culture", Meme: "Culture", "Stan Twitter": "Culture",
-  Fashion: "Culture", Streetwear: "Culture",
+function hasAnyWord(text: string, words: string[]): boolean {
+  return words.some((word) => hasWord(text, word));
+}
 
-  // Entertainment
-  Netflix: "Entertainment", Disney: "Entertainment",
-  HBO: "Entertainment", Hulu: "Entertainment",
-  "Amazon Prime": "Entertainment", "Apple TV": "Entertainment",
-  Marvel: "Entertainment", "DC Comics": "Entertainment",
-  "Star Wars": "Entertainment", Batman: "Entertainment",
-  Superman: "Entertainment", "Spider-Man": "Entertainment",
-  Deadpool: "Entertainment", Avengers: "Entertainment",
-  "Stranger Things": "Entertainment", "The Bear": "Entertainment",
-  Euphoria: "Entertainment", "Squid Game": "Entertainment",
-  Anime: "Entertainment", Manga: "Entertainment",
-  "One Piece": "Entertainment", "Jujutsu Kaisen": "Entertainment",
-  "Dragon Ball": "Entertainment", Naruto: "Entertainment",
-  "Attack on Titan": "Entertainment",
-  "Box Office": "Entertainment", Trailer: "Entertainment",
-  Barbie: "Entertainment", Oppenheimer: "Entertainment",
-  "K-pop": "Entertainment", BTS: "Entertainment",
-  BLACKPINK: "Entertainment", Stray: "Entertainment",
+function extractHashtags(text: string): Set<string> {
+  return new Set(text.match(/#[a-z0-9_]+/gi)?.map((tag) => tag.toLowerCase()) ?? []);
+}
 
-  // News
-  Breaking: "News", "#Breaking": "News",
-  BREAKING: "News", RIP: "News", "Rest in Peace": "News",
-  "Mass Shooting": "News", Shooting: "News",
-  Earthquake: "News", Hurricane: "News", Tornado: "News",
-  Wildfire: "News", Flood: "News", Tsunami: "News",
-  "Missing Person": "News", Amber: "News",
-  Recall: "News", Investigation: "News",
-  Protest: "News", Riot: "News",
-  "Train Derailment": "News", Crash: "News",
-  Hostage: "News", Bombing: "News",
+export function classifyTrend(trendName: string): TrendCategory | null {
+  const normalized = trendName.toLowerCase();
+  const hashtags = extractHashtags(trendName);
 
-  // Science
-  Climate: "Science", "Climate Change": "Science",
-  NASA: "Science", Space: "Science", Mars: "Science",
-  Moon: "Science", Eclipse: "Science", Asteroid: "Science",
-  Vaccine: "Science", "Bird Flu": "Science", Pandemic: "Science",
-  "Global Warming": "Science", "Carbon Emissions": "Science",
-  "Renewable Energy": "Science", Solar: "Science",
-  "Electric Vehicle": "Science", EV: "Science",
-  "James Webb": "Science", "Black Hole": "Science",
-
-  // Games
-  Wordle: "Games", "Call of Duty": "Games", COD: "Games",
-  Fortnite: "Games", Minecraft: "Games", Roblox: "Games",
-  PlayStation: "Games", PS5: "Games", Xbox: "Games",
-  Nintendo: "Games", Switch: "Games", "Mario": "Games",
-  Zelda: "Games", Pokemon: "Games", "Elden Ring": "Games",
-  GTA: "Games", "GTA 6": "Games", "GTA VI": "Games",
-  Valorant: "Games", "League of Legends": "Games", LoL: "Games",
-  Apex: "Games", Overwatch: "Games",
-  Palworld: "Games", Helldivers: "Games",
-  Steam: "Games", "Game Pass": "Games",
-  Esports: "Games", Twitch: "Games",
-
-  // Health
-  "Mental Health": "Health", "#MentalHealth": "Health",
-  Depression: "Health", Anxiety: "Health",
-  "Weight Loss": "Health", Ozempic: "Health",
-  Cancer: "Health", "Heart Disease": "Health",
-  Diabetes: "Health", Alzheimer: "Health",
-  "Drug Overdose": "Health", Fentanyl: "Health",
-  "Health Care": "Health", Medicare: "Health",
-  Medicaid: "Health", "ACA": "Health",
-  Fitness: "Health", Gym: "Health", Wellness: "Health",
-  Nutrition: "Health", Diet: "Health",
-  COVID: "Health", "Long COVID": "Health",
-  WHO: "Health",
-};
-
-export function classifyTrend(trendName: string): string {
-  const lower = trendName.toLowerCase().replace(/^#/, "");
-
-  for (const [keyword, category] of Object.entries(CATEGORY_MAP)) {
-    const keyLower = keyword.toLowerCase().replace(/^#/, "");
-    if (lower === keyLower || lower.includes(keyLower)) {
-      return category;
+  for (const rule of CATEGORY_RULES) {
+    if (rule.hashtags?.some((tag) => hashtags.has(tag))) {
+      return rule.category;
+    }
+    if (rule.phrases?.some((phrase) => hasPhrase(normalized, phrase))) {
+      return rule.category;
+    }
+    if (rule.anyWords?.some((word) => hasWord(normalized, word))) {
+      return rule.category;
+    }
+    if (rule.allWords && rule.allWords.every((word) => hasWord(normalized, word))) {
+      return rule.category;
+    }
+    if (rule.custom?.(normalized, hashtags)) {
+      return rule.category;
     }
   }
 
-  return "Trending";
+  return null;
 }
 
-export const CATEGORY_COLORS: Record<string, string> = {
+export const CATEGORY_COLORS: Record<TrendCategory | "Untagged", string> = {
   Tech: "#A78BFA",
   Politics: "#FB923C",
   Sports: "#34D399",
@@ -201,5 +269,5 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Science: "#22D3EE",
   Games: "#A3E635",
   Health: "#6EE7B7",
-  Trending: "#888888",
+  Untagged: "#9CA3AF",
 };

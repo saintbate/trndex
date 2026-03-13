@@ -21,7 +21,7 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
   const [hovered, setHovered] = useState(false);
   const isUp = trend.direction === "up";
   const c = isUp ? "#00E676" : trend.direction === "down" ? "#FF5252" : "rgba(255,255,255,0.25)";
-  const cc = CATEGORY_COLORS[trend.category] || "#888";
+  const cc = trend.category ? CATEGORY_COLORS[trend.category] : null;
 
   return (
     <div
@@ -41,16 +41,18 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
         <span className="font-grotesk text-[13px] font-semibold text-white tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
           {trend.trend_name}
         </span>
-        <span
-          className="font-mono text-[7.5px] font-bold uppercase tracking-[0.06em] rounded px-1 py-px flex-shrink-0"
-          style={{
-            color: cc,
-            background: `${cc}10`,
-            border: `1px solid ${cc}20`,
-          }}
-        >
-          {trend.category}
-        </span>
+        {trend.category && cc && (
+          <span
+            className="font-mono text-[7.5px] font-bold uppercase tracking-[0.06em] rounded px-1 py-px flex-shrink-0"
+            style={{
+              color: cc,
+              background: `${cc}10`,
+              border: `1px solid ${cc}20`,
+            }}
+          >
+            {trend.category}
+          </span>
+        )}
         {trend.is_new && (
           <span className="font-mono text-[7px] font-extrabold tracking-[0.1em] rounded px-1 py-px flex-shrink-0 text-[#FBBF24] bg-[#FBBF24]/[0.06] border border-[#FBBF24]/[0.12]">
             NEW

@@ -29,7 +29,9 @@ const ALL_CATEGORIES = [
   "Science",
   "Games",
   "Health",
-];
+] as const;
+
+const FILTER_OPTIONS = [...ALL_CATEGORIES, "Untagged"] as const;
 
 function SkeletonRow({ index }: { index: number }) {
   return (
@@ -146,7 +148,7 @@ export default function Dashboard() {
 
   const fetchTrends = useCallback(async () => {
     try {
-      const res = await fetch("/api/trends?woeid=23424977");
+      const res = await fetch("/api/trends?woeid=23424977", { cache: "no-store" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
@@ -183,7 +185,9 @@ export default function Dashboard() {
     let list =
       filter === "All"
         ? [...data.trends]
-        : data.trends.filter((t) => t.category === filter);
+        : filter === "Untagged"
+          ? data.trends.filter((t) => !t.category)
+          : data.trends.filter((t) => t.category === filter);
 
     switch (sortBy) {
       case "momentum":
@@ -352,8 +356,8 @@ export default function Dashboard() {
           ))}
         </div>
         <div className="flex gap-1 flex-wrap overflow-x-auto max-w-full hide-scrollbar">
-          {ALL_CATEGORIES.map((cat) => {
-            const cc = CATEGORY_COLORS[cat] || "rgba(255,255,255,0.08)";
+          {FILTER_OPTIONS.map((cat) => {
+            const cc = cat === "All" ? "rgba(255,255,255,0.08)" : CATEGORY_COLORS[cat];
             return (
               <button
                 key={cat}
