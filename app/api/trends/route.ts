@@ -54,13 +54,23 @@ export async function GET(request: NextRequest) {
     const previousTime = snapshotTimes.length > 1 ? snapshotTimes[1].fetched_at : null;
 
     // 3. Previous snapshot: trend_name -> rank
+    // Query the previous timestamp entirely in SQL so we do not lose
+    // sub-millisecond precision when round-tripping through JS dates.
     const prevRankMap = new Map<string, number>();
     if (previousTime) {
       const prevTrends = await sql`
         SELECT trend_name, rank
         FROM snapshots
         WHERE woeid = ${woeid}
-          AND fetched_at = ${previousTime}
+          AND fetched_at = (
+            SELECT fetched_at FROM (
+              SELECT DISTINCT fetched_at
+              FROM snapshots
+              WHERE woeid = ${woeid}
+              ORDER BY fetched_at DESC
+              LIMIT 1 OFFSET 1
+            ) t
+          )
       `;
       for (const row of prevTrends) {
         prevRankMap.set(row.trend_name, row.rank);
