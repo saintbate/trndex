@@ -46,24 +46,42 @@ export async function GET() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "16px",
+            gap: "14px",
             marginBottom: "32px",
           }}
         >
           <div
             style={{
-              fontSize: "64px",
-              fontWeight: 800,
-              color: "#fff",
-              letterSpacing: "-0.04em",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
             }}
           >
-            TRNDEX
+            <div
+              style={{
+                fontSize: "64px",
+                fontWeight: 800,
+                color: "#fff",
+                letterSpacing: "-0.08em",
+              }}
+            >
+              TRNDE
+            </div>
+            <svg
+              width="34"
+              height="34"
+              viewBox="0 0 34 34"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M7 7L27 27" stroke="#00E676" strokeWidth="6" strokeLinecap="round" />
+              <path d="M27 7L7 27" stroke="#00E676" strokeWidth="6" strokeLinecap="round" />
+            </svg>
           </div>
           <div
             style={{
               fontSize: "20px",
-              fontWeight: 700,
+              fontWeight: 800,
               color: "#00E676",
               letterSpacing: "0.1em",
             }}

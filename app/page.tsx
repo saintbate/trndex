@@ -6,6 +6,7 @@ import { CATEGORY_COLORS } from "@/lib/categories";
 import TickerTape from "@/components/TickerTape";
 import MoverCard from "@/components/MoverCard";
 import TrendRow from "@/components/TrendRow";
+import Wordmark from "@/components/Wordmark";
 
 type SortMode = "rank" | "momentum" | "gainers" | "losers";
 
@@ -70,7 +71,7 @@ function SkeletonLoader() {
 
       <div className="flex justify-between items-center px-5 pt-3.5 pb-2.5 border-b border-white/5">
         <div className="flex items-center gap-2.5">
-          <div className="font-mono text-[22px] font-extrabold tracking-tighter text-white">TRNDEX</div>
+          <Wordmark className="h-5 w-auto" />
           <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">LIVE</span>
         </div>
         <div className="text-right">
@@ -244,9 +245,7 @@ export default function Dashboard() {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
         <div className="text-center">
-          <div className="font-mono text-2xl font-extrabold text-white tracking-tighter mb-3">
-            TRNDEX
-          </div>
+          <Wordmark className="h-7 w-auto mx-auto mb-3" />
           <div className="font-mono text-xs text-down/80 mb-2">
             {error || "No data available"}
           </div>
@@ -267,9 +266,7 @@ export default function Dashboard() {
 
       <div className="flex justify-between items-center px-4 sm:px-5 pt-3.5 pb-2.5 border-b border-white/5 flex-wrap gap-2.5">
         <div className="flex items-center gap-2.5">
-          <h1 className="font-mono text-[22px] font-extrabold tracking-tighter text-white">
-            TRNDEX
-          </h1>
+          <Wordmark className="h-5 w-auto sm:h-[22px]" />
           <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">
             LIVE
           </span>

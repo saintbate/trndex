@@ -77,6 +77,12 @@ X API v2 `GET /2/trends/by/woeid/:id`
 
 ---
 
+## Deploy to trndex.live
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step instructions to deploy on Vercel and connect your Squarespace domain.
+
+---
+
 ## Quick Start (Local Development)
 
 ### 1. No API key yet? Use mock data
