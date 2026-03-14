@@ -408,6 +408,44 @@ def init_db():
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS market_price_bars (
+                symbol TEXT NOT NULL,
+                bucket_start TIMESTAMPTZ NOT NULL,
+                open NUMERIC(18,6),
+                high NUMERIC(18,6),
+                low NUMERIC(18,6),
+                close NUMERIC(18,6),
+                volume NUMERIC(20,4),
+                source TEXT NOT NULL,
+                PRIMARY KEY (symbol, bucket_start, source)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_market_bars (
+                contract_id TEXT NOT NULL,
+                bucket_start TIMESTAMPTZ NOT NULL,
+                venue TEXT NOT NULL,
+                question TEXT,
+                price_yes NUMERIC(10,6),
+                price_no NUMERIC(10,6),
+                volume NUMERIC(18,4),
+                open_interest NUMERIC(18,4),
+                PRIMARY KEY (contract_id, bucket_start, venue)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_price_bars_time
+            ON market_price_bars(bucket_start DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_price_bars_symbol
+            ON market_price_bars(symbol, bucket_start DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_prediction_market_bars_time
+            ON prediction_market_bars(bucket_start DESC)
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS trend_lifecycle_summary (
                 entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
                 woeid INTEGER NOT NULL,
@@ -429,6 +467,7 @@ def init_db():
                 PRIMARY KEY (entity_id, woeid)
             )
         """)
+        cur.execute("ALTER TABLE trend_features ADD COLUMN IF NOT EXISTS spread_score REAL NOT NULL DEFAULT 0")
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_snapshots_trend
             ON snapshots(trend_name, woeid, fetched_at)
@@ -576,6 +615,7 @@ def rebuild_location_intelligence(conn, woeid: int):
         for row in item_rows:
             items_by_run.setdefault(row["run_id"], []).append(row)
 
+        total_locations = len(LOCATIONS)
         appearance_count = {}
         current_streak = {}
         longest_streak = {}
@@ -596,6 +636,20 @@ def rebuild_location_intelligence(conn, woeid: int):
             persisting_deltas = []
             category_counts = {}
             current_volume = 0
+
+            spread_map = {}
+            if total_locations > 1:
+                cur.execute(
+                    """
+                    SELECT entity_id, COUNT(DISTINCT woeid) AS loc_count
+                    FROM snapshot_items
+                    WHERE fetched_at BETWEEN %s - INTERVAL '30 minutes' AND %s + INTERVAL '30 minutes'
+                    GROUP BY entity_id
+                    """,
+                    (run["fetched_at"], run["fetched_at"]),
+                )
+                for row in cur.fetchall():
+                    spread_map[row["entity_id"]] = row["loc_count"]
 
             for item in current_items:
                 entity_id = item["entity_id"]
@@ -620,6 +674,7 @@ def rebuild_location_intelligence(conn, woeid: int):
                 volume_delta_pct = None
                 if prev_tweet_count and item["tweet_count"]:
                     volume_delta_pct = round(((item["tweet_count"] - prev_tweet_count) / prev_tweet_count) * 100, 2)
+                spread_score = round(spread_map.get(entity_id, 1) / max(total_locations, 1), 4)
 
                 breakout_peak[entity_id] = max(breakout_peak.get(entity_id, 0.0), breakout_score)
                 seen_before.add(entity_id)
@@ -636,10 +691,10 @@ def rebuild_location_intelligence(conn, woeid: int):
                         run_id, entity_id, fetched_at, woeid, trend_name_raw, canonical_name, category,
                         rank, prev_rank, rank_delta, rank_velocity, rank_acceleration,
                         board_age_snapshots, persistence_score, breakout_score, volatility_score,
-                        entry_flag, exit_flag, reentry_count, tweet_count, prev_tweet_count,
+                        spread_score, entry_flag, exit_flag, reentry_count, tweet_count, prev_tweet_count,
                         volume_delta_pct, volume_source, methodology_version
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         run["run_id"],
@@ -658,6 +713,7 @@ def rebuild_location_intelligence(conn, woeid: int):
                         persistence_score,
                         breakout_score,
                         volatility_score,
+                        spread_score,
                         entry_flag,
                         exit_flag,
                         reentry_count.get(entity_id, 0),
@@ -884,7 +940,7 @@ def store_snapshot(
 ):
     """Store raw snapshot data plus derived intelligence for one location."""
     conn = get_conn()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     now = fetched_at or datetime.now(timezone.utc)
     run_id = build_run_id(woeid, now)
     trend_names = [t.get("trend_name", "Unknown") for t in trends]
