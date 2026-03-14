@@ -99,6 +99,8 @@ async function getLegacyTrendsResponse(sql: ReturnType<typeof getDb>, woeid: num
   const trends: Trend[] = currentTrends.map((row) => {
     const prevRank = prevRankMap.get(row.trend_name) ?? null;
     const delta = prevRank !== null ? prevRank - row.rank : 0;
+    const isNew = previousTime ? prevRank === null : false;
+    const breakoutScore = Math.min(100, (isNew ? 15 : 0) + Math.max(0, delta) * 5 + (21 - row.rank) * 1.5);
 
     return {
       trend_name: row.trend_name,
@@ -106,9 +108,10 @@ async function getLegacyTrendsResponse(sql: ReturnType<typeof getDb>, woeid: num
       prev_rank: prevRank,
       delta,
       direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
-      is_new: previousTime ? prevRank === null : false,
+      is_new: isNew,
       sparkline: sparklineMap.get(row.trend_name) ?? [row.rank],
       category: classifyTrend(row.trend_name),
+      breakout_score: breakoutScore,
     };
   });
 
@@ -166,7 +169,7 @@ export async function GET(request: NextRequest) {
     const latestRun = latestRuns[0];
     const previousRun = latestRuns[1] ?? null;
     const currentTrends = await sql`
-      SELECT entity_id, trend_name_raw, rank, prev_rank, rank_delta, entry_flag, category
+      SELECT entity_id, trend_name_raw, rank, prev_rank, rank_delta, entry_flag, category, breakout_score
       FROM trend_features
       WHERE run_id = ${latestRun.run_id}
       ORDER BY rank ASC
@@ -243,6 +246,7 @@ export async function GET(request: NextRequest) {
         is_new: row.entry_flag,
         sparkline: sparklineMap.get(row.trend_name_raw) ?? [row.rank],
         category: row.category || classifyTrend(row.trend_name_raw),
+        breakout_score: row.breakout_score ?? null,
       };
     });
 

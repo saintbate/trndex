@@ -1,9 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CATEGORY_COLORS } from "@/lib/categories";
 import type { Trend } from "@/lib/types";
 import Sparkline from "./Sparkline";
+
+const PREDICT_STORAGE_KEY = "trndex_predictions";
+
+interface StoredPrediction {
+  trend: string;
+  prediction: "yes" | "no";
+  timestamp: string;
+}
+
+function getStoredPredictions(): StoredPrediction[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PREDICT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setStoredPredictions(preds: StoredPrediction[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PREDICT_STORAGE_KEY, JSON.stringify(preds));
+  } catch {}
+}
 
 interface TrendRowProps {
   trend: Trend;
@@ -39,6 +64,11 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
   const [context, setContext] = useState<string | null>(() => contextCache.get(trend.trend_name) ?? null);
   const [loadingContext, setLoadingContext] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
+  const [myPrediction, setMyPrediction] = useState<StoredPrediction | null>(() =>
+    getStoredPredictions().find((p) => p.trend === trend.trend_name) ?? null
+  );
+  const [resolveResult, setResolveResult] = useState<{ was_on_board: boolean | null; snapshot_at: string | null } | null>(null);
+  const [resolving, setResolving] = useState(false);
   const isUp = trend.direction === "up";
   const c = isUp ? "#00E676" : trend.direction === "down" ? "#FF5252" : "rgba(255,255,255,0.25)";
   const cc = trend.category ? CATEGORY_COLORS[trend.category] : null;
@@ -67,6 +97,35 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
       void handleToggle();
     }
   }
+
+  function handlePredict(choice: "yes" | "no") {
+    const pred: StoredPrediction = { trend: trend.trend_name, prediction: choice, timestamp: new Date().toISOString() };
+    const preds = getStoredPredictions().filter((p) => p.trend !== trend.trend_name);
+    preds.push(pred);
+    setStoredPredictions(preds);
+    setMyPrediction(pred);
+  }
+
+  useEffect(() => {
+    if (!myPrediction || resolveResult) return;
+    const predTime = new Date(myPrediction.timestamp).getTime();
+    const fourHoursLater = predTime + 4 * 60 * 60 * 1000;
+    if (Date.now() < fourHoursLater) return;
+
+    setResolving(true);
+    fetch(
+      `/api/predict/resolve?trend=${encodeURIComponent(myPrediction.trend)}&predicted_at=${encodeURIComponent(myPrediction.timestamp)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.resolved) {
+          setResolveResult({ was_on_board: data.was_on_board ?? null, snapshot_at: data.snapshot_at ?? null });
+          const preds = getStoredPredictions().filter((p) => !(p.trend === myPrediction.trend && p.timestamp === myPrediction.timestamp));
+          setStoredPredictions(preds);
+        }
+      })
+      .finally(() => setResolving(false));
+  }, [myPrediction, resolveResult]);
 
   return (
     <div
@@ -111,6 +170,11 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
               NEW
             </span>
           )}
+          {(trend.breakout_score ?? 0) >= 30 && !trend.is_new && (
+            <span className="font-mono text-[7px] font-extrabold tracking-[0.08em] rounded px-1 py-px flex-shrink-0 text-[#FBBF24] bg-[#FBBF24]/[0.08] border border-[#FBBF24]/[0.2]">
+              BREAKOUT
+            </span>
+          )}
         </div>
 
         <div className="flex justify-center sparkline-cell">
@@ -141,7 +205,7 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
       >
         <div className="grid trend-row-grid no-vol px-4 sm:px-5 pb-3">
           <div />
-          <div className="col-span-3 border-t border-white/[0.04] pt-2.5">
+          <div className="col-span-3 border-t border-white/[0.04] pt-2.5 space-y-2.5">
             {loadingContext ? (
               <div className="h-3 w-[72%] rounded bg-white/[0.05] animate-pulse" />
             ) : (
@@ -149,6 +213,43 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
                 {contextError || context}
               </div>
             )}
+            <div className="font-mono text-[9px] text-white/25">
+              Predict: Will this stay on the board in 4 hours?
+              {!myPrediction ? (
+                <span className="ml-2">
+                  <button
+                    onClick={() => handlePredict("yes")}
+                    className="text-[#00E676] hover:underline mr-2"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => handlePredict("no")}
+                    className="text-[#FF5252] hover:underline"
+                  >
+                    No
+                  </button>
+                </span>
+              ) : resolveResult ? (
+                <span className="ml-2 text-white/50">
+                  {resolveResult.was_on_board === null ? (
+                    "No snapshot in window — couldn't resolve."
+                  ) : (
+                    <>
+                      You said {myPrediction.prediction.toUpperCase()} — {resolveResult.was_on_board ? "Still on board" : "Dropped off"}.{" "}
+                      {(myPrediction.prediction === "yes" && resolveResult.was_on_board) ||
+                      (myPrediction.prediction === "no" && !resolveResult.was_on_board)
+                        ? "Correct!"
+                        : "Wrong."}
+                    </>
+                  )}
+                </span>
+              ) : resolving ? (
+                <span className="ml-2 text-white/30">Checking...</span>
+              ) : (
+                <span className="ml-2 text-white/30">You said {myPrediction.prediction.toUpperCase()}. Check back in ~4h.</span>
+              )}
+            </div>
           </div>
         </div>
       </div>

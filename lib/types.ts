@@ -22,6 +22,7 @@ export interface Trend {
   is_new: boolean;
   sparkline: (number | null)[];
   category: TrendCategory | null;
+  breakout_score?: number | null;
 }
 
 export interface TrendsResponse {

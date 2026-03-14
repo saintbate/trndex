@@ -8,13 +8,14 @@ import MoverCard from "@/components/MoverCard";
 import TrendRow from "@/components/TrendRow";
 import Wordmark from "@/components/Wordmark";
 
-type SortMode = "rank" | "momentum" | "gainers" | "losers";
+type SortMode = "rank" | "momentum" | "gainers" | "losers" | "breakouts";
 
 const SORT_OPTIONS: [SortMode, string][] = [
   ["rank", "RANK"],
   ["momentum", "MOVERS"],
   ["gainers", "GAINERS"],
   ["losers", "LOSERS"],
+  ["breakouts", "BREAKOUTS"],
 ];
 
 const ALL_CATEGORIES = [
@@ -204,6 +205,9 @@ export default function Dashboard() {
           .filter((t) => t.direction === "down")
           .sort((a, b) => a.delta - b.delta);
         break;
+      case "breakouts":
+        list.sort((a, b) => (b.breakout_score ?? 0) - (a.breakout_score ?? 0));
+        break;
       default:
         list.sort((a, b) => a.rank - b.rank);
     }
@@ -223,6 +227,14 @@ export default function Dashboard() {
     return [...data.trends]
       .filter((t) => t.direction === "down")
       .sort((a, b) => a.delta - b.delta)[0] || null;
+  }, [data]);
+
+  const topBreakouts = useMemo(() => {
+    if (!data) return [];
+    return [...data.trends]
+      .filter((t) => (t.breakout_score ?? 0) >= 25)
+      .sort((a, b) => (b.breakout_score ?? 0) - (a.breakout_score ?? 0))
+      .slice(0, 3);
   }, [data]);
 
   const marketStats = useMemo(() => {
@@ -314,6 +326,18 @@ export default function Dashboard() {
           ) : (
             <EmptyMoverCard type="loser" />
           )}
+          {topBreakouts.length > 0 ? (
+            <div className="flex-1 min-w-[140px] p-3 rounded-lg flex flex-col" style={{ background: "#FBBF2406", border: "1px solid #FBBF2418" }}>
+              <div className="font-mono text-[8.5px] font-bold tracking-[0.1em] text-[#FBBF24]/80 mb-2">
+                BREAKING OUT
+              </div>
+              {topBreakouts.map((t) => (
+                <div key={t.trend_name} className="font-mono text-[10px] text-white/70 truncate" title={t.trend_name}>
+                  {t.trend_name}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {marketStats && (
             <div className="flex-1 min-w-[140px] p-3 bg-white/[0.015] border border-white/5 rounded-lg">
               <div className="font-mono text-[8.5px] font-bold tracking-[0.1em] text-white/25 mb-1.5">

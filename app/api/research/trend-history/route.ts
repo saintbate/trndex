@@ -49,6 +49,21 @@ export async function GET(request: NextRequest) {
       ORDER BY fetched_at ASC
     `;
 
+    const entityRow = await sql`
+      SELECT canonical_name FROM trend_entities WHERE entity_id = ${entityId} LIMIT 1
+    `;
+    const canonicalName = (entityRow[0] as { canonical_name: string } | undefined)?.canonical_name ?? trend;
+    const gtKeyword = canonicalName.replace(/^#/, "").trim().toLowerCase();
+
+    const gtRows = await sql`
+      SELECT bucket_date, interest_value
+      FROM google_trends_bars
+      WHERE LOWER(TRIM(REPLACE(keyword, '#', ''))) = ${gtKeyword}
+        AND geo = 'US'
+        AND bucket_date >= ${cutoff.slice(0, 10)}
+      ORDER BY bucket_date ASC
+    `;
+
     return NextResponse.json({
       meta: {
         trend,
@@ -59,6 +74,7 @@ export async function GET(request: NextRequest) {
       },
       lifecycle: lifecycleRows[0] ?? null,
       history: historyRows,
+      google_trends: gtRows,
     });
   } catch (error) {
     console.error("Error fetching trend history:", error);

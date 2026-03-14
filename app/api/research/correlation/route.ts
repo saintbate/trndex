@@ -7,6 +7,7 @@ interface AlignedPoint {
   attention_rank: number | null;
   attention_breakout: number | null;
   attention_spread: number | null;
+  google_trends_interest: number | null;
   price_close: number | null;
   price_change_pct: number | null;
   prediction_price_yes: number | null;
@@ -45,7 +46,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing trend parameter" }, { status: 400 });
   }
   if (!symbol && !contractId) {
-    return NextResponse.json({ error: "Provide symbol or contract_id" }, { status: 400 });
+    return NextResponse.json({
+      error: "Provide symbol or contract_id to correlate with market data. Use trend-history for attention + Google Trends only.",
+    }, { status: 400 });
   }
 
   const sql = getDb();
@@ -97,6 +100,21 @@ export async function GET(request: NextRequest) {
       `;
     }
 
+    const entityRow = await sql`
+      SELECT canonical_name FROM trend_entities WHERE entity_id = ${entityId} LIMIT 1
+    `;
+    const canonicalName = (entityRow[0] as { canonical_name: string } | undefined)?.canonical_name ?? trend;
+    const gtKeyword = canonicalName.replace(/^#/, "").trim().toLowerCase();
+
+    const gtRows = await sql`
+      SELECT bucket_date, interest_value
+      FROM google_trends_bars
+      WHERE LOWER(TRIM(REPLACE(keyword, '#', ''))) = ${gtKeyword}
+        AND geo = 'US'
+        AND bucket_date >= ${new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString().slice(0, 10)}
+      ORDER BY bucket_date ASC
+    `;
+
     const attentionByDay = new Map<string, { rank: number; breakout: number; spread: number }>();
     for (const row of attentionRows) {
       const day = new Date(row.fetched_at).toISOString().slice(0, 10);
@@ -122,10 +140,17 @@ export async function GET(request: NextRequest) {
       predictionByDay.set(day, { price_yes: Number(row.price_yes), question: String(row.question ?? "") });
     }
 
+    const gtByDay = new Map<string, number>();
+    for (const row of gtRows as { bucket_date: string; interest_value: number }[]) {
+      const day = String(row.bucket_date).slice(0, 10);
+      gtByDay.set(day, Number(row.interest_value));
+    }
+
     const allDays = new Set<string>();
     attentionByDay.forEach((_, k) => allDays.add(k));
     priceByDay.forEach((_, k) => allDays.add(k));
     predictionByDay.forEach((_, k) => allDays.add(k));
+    gtByDay.forEach((_, k) => allDays.add(k));
     const sortedDays = Array.from(allDays).sort();
 
     const series: AlignedPoint[] = [];
@@ -146,6 +171,7 @@ export async function GET(request: NextRequest) {
         attention_rank: att?.rank ?? null,
         attention_breakout: att?.breakout ?? null,
         attention_spread: att?.spread ?? null,
+        google_trends_interest: gtByDay.get(day) ?? null,
         price_close: close,
         price_change_pct: priceChangePct !== null ? Math.round(priceChangePct * 100) / 100 : null,
         prediction_price_yes: pred?.price_yes ?? null,

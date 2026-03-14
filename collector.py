@@ -446,6 +446,20 @@ def init_db():
             ON prediction_market_bars(bucket_start DESC)
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS google_trends_bars (
+                keyword TEXT NOT NULL,
+                bucket_date DATE NOT NULL,
+                geo TEXT NOT NULL DEFAULT '',
+                interest_value INTEGER NOT NULL,
+                fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (keyword, bucket_date, geo)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_google_trends_bars_keyword_date
+            ON google_trends_bars(keyword, bucket_date DESC)
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS trend_lifecycle_summary (
                 entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
                 woeid INTEGER NOT NULL,
