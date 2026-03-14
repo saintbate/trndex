@@ -21,6 +21,14 @@ export const metadata: Metadata = {
   title: "TRNDEX — The Trend Exchange",
   description:
     "Real-time stock exchange for internet culture. See what's trending, what's surging, what's crashing.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml", sizes: "any" },
+      { url: "/favicon.ico", sizes: "32x32" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
   openGraph: {
     title: "TRNDEX — The Trend Exchange",
     description: "Real-time momentum signals for X/Twitter trends.",
