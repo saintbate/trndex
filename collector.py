@@ -25,6 +25,8 @@ import os
 import sys
 import json
 import time
+import re
+import statistics
 import argparse
 from datetime import datetime, timezone, timedelta
 
@@ -43,7 +45,7 @@ except ImportError:
 
 try:
     import psycopg2
-    from psycopg2.extras import RealDictCursor
+    from psycopg2.extras import Json, RealDictCursor
 except ImportError:
     print("Install psycopg2-binary: pip install psycopg2-binary")
     sys.exit(1)
@@ -67,6 +69,8 @@ LOCATIONS = {
 
 API_URL = "https://api.x.com/2/trends/by/woeid/{woeid}"
 POLL_INTERVAL_SECONDS = 2 * 60 * 60  # 2 hours
+METHODOLOGY_VERSION = "rank-v1"
+FEATURE_REBUILD_LOOKBACK = 12
 try:
     DEFAULT_GROK_AGENTIC_VOLUME_LIMIT = max(1, int(os.environ.get("GROK_AGENTIC_VOLUME_LIMIT", "12")))
 except ValueError:
@@ -294,6 +298,137 @@ def init_db():
                 rank INTEGER DEFAULT 0
             )
         """)
+        cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS category TEXT")
+        cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS run_id TEXT")
+        cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS meta_description TEXT")
+        cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS volume_source TEXT")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS snapshot_runs (
+                run_id TEXT PRIMARY KEY,
+                fetched_at TIMESTAMPTZ NOT NULL,
+                woeid INTEGER NOT NULL,
+                location_name TEXT NOT NULL,
+                source_status TEXT NOT NULL,
+                source_payload JSONB,
+                methodology_version TEXT NOT NULL,
+                item_count INTEGER NOT NULL DEFAULT 0,
+                feature_status TEXT NOT NULL DEFAULT 'pending',
+                feature_generated_at TIMESTAMPTZ,
+                feature_error TEXT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trend_entities (
+                entity_id SERIAL PRIMARY KEY,
+                canonical_name TEXT NOT NULL UNIQUE,
+                canonical_name_normalized TEXT NOT NULL UNIQUE,
+                first_seen_at TIMESTAMPTZ NOT NULL,
+                last_seen_at TIMESTAMPTZ NOT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trend_aliases (
+                alias_name TEXT PRIMARY KEY,
+                alias_normalized TEXT NOT NULL UNIQUE,
+                entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
+                first_seen_at TIMESTAMPTZ NOT NULL,
+                last_seen_at TIMESTAMPTZ NOT NULL,
+                alias_kind TEXT NOT NULL DEFAULT 'observed'
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS snapshot_items (
+                id SERIAL PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES snapshot_runs(run_id) ON DELETE CASCADE,
+                entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
+                fetched_at TIMESTAMPTZ NOT NULL,
+                woeid INTEGER NOT NULL,
+                location_name TEXT NOT NULL,
+                trend_name_raw TEXT NOT NULL,
+                trend_name_normalized TEXT NOT NULL,
+                rank INTEGER NOT NULL,
+                tweet_count INTEGER DEFAULT 0,
+                meta_description TEXT,
+                volume_source TEXT,
+                category TEXT,
+                context_cache_key TEXT,
+                methodology_version TEXT NOT NULL,
+                UNIQUE (run_id, rank),
+                UNIQUE (run_id, trend_name_raw)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trend_features (
+                id SERIAL PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES snapshot_runs(run_id) ON DELETE CASCADE,
+                entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
+                fetched_at TIMESTAMPTZ NOT NULL,
+                woeid INTEGER NOT NULL,
+                trend_name_raw TEXT NOT NULL,
+                canonical_name TEXT NOT NULL,
+                category TEXT,
+                rank INTEGER NOT NULL,
+                prev_rank INTEGER,
+                rank_delta INTEGER NOT NULL DEFAULT 0,
+                rank_velocity REAL NOT NULL DEFAULT 0,
+                rank_acceleration REAL NOT NULL DEFAULT 0,
+                board_age_snapshots INTEGER NOT NULL DEFAULT 1,
+                persistence_score REAL NOT NULL DEFAULT 0,
+                breakout_score REAL NOT NULL DEFAULT 0,
+                volatility_score REAL NOT NULL DEFAULT 0,
+                entry_flag BOOLEAN NOT NULL DEFAULT FALSE,
+                exit_flag BOOLEAN NOT NULL DEFAULT FALSE,
+                reentry_count INTEGER NOT NULL DEFAULT 0,
+                tweet_count INTEGER DEFAULT 0,
+                prev_tweet_count INTEGER,
+                volume_delta_pct REAL,
+                volume_source TEXT,
+                methodology_version TEXT NOT NULL,
+                UNIQUE (run_id, entity_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS market_features (
+                run_id TEXT PRIMARY KEY REFERENCES snapshot_runs(run_id) ON DELETE CASCADE,
+                fetched_at TIMESTAMPTZ NOT NULL,
+                woeid INTEGER NOT NULL,
+                location_name TEXT NOT NULL,
+                board_size INTEGER NOT NULL,
+                new_entry_count INTEGER NOT NULL DEFAULT 0,
+                exit_count INTEGER NOT NULL DEFAULT 0,
+                turnover_ratio REAL NOT NULL DEFAULT 0,
+                avg_rank_displacement REAL NOT NULL DEFAULT 0,
+                category_breadth INTEGER NOT NULL DEFAULT 0,
+                top_category_share REAL NOT NULL DEFAULT 0,
+                market_regime_label TEXT NOT NULL,
+                current_volume BIGINT NOT NULL DEFAULT 0,
+                avg_volume BIGINT NOT NULL DEFAULT 0,
+                volume_deviation_pct REAL NOT NULL DEFAULT 0,
+                methodology_version TEXT NOT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trend_lifecycle_summary (
+                entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
+                woeid INTEGER NOT NULL,
+                canonical_name TEXT NOT NULL,
+                first_seen_at TIMESTAMPTZ NOT NULL,
+                last_seen_at TIMESTAMPTZ NOT NULL,
+                latest_run_id TEXT REFERENCES snapshot_runs(run_id),
+                appearances INTEGER NOT NULL DEFAULT 0,
+                reentry_count INTEGER NOT NULL DEFAULT 0,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                longest_streak INTEGER NOT NULL DEFAULT 0,
+                best_rank INTEGER,
+                latest_rank INTEGER,
+                avg_rank REAL,
+                median_rank REAL,
+                max_breakout_score REAL NOT NULL DEFAULT 0,
+                persistence_score REAL NOT NULL DEFAULT 0,
+                methodology_version TEXT NOT NULL,
+                PRIMARY KEY (entity_id, woeid)
+            )
+        """)
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_snapshots_trend
             ON snapshots(trend_name, woeid, fetched_at)
@@ -306,48 +441,553 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_snapshots_woeid_time
             ON snapshots(woeid, fetched_at DESC)
         """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshot_runs_woeid_time
+            ON snapshot_runs(woeid, fetched_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshot_items_woeid_time
+            ON snapshot_items(woeid, fetched_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshot_items_entity_time
+            ON snapshot_items(entity_id, woeid, fetched_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trend_features_woeid_time
+            ON trend_features(woeid, fetched_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trend_features_entity_time
+            ON trend_features(entity_id, woeid, fetched_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_features_woeid_time
+            ON market_features(woeid, fetched_at DESC)
+        """)
         conn.commit()
     finally:
         cur.close()
         conn.close()
 
 
-def store_snapshot(woeid: int, location_name: str, trends: list, use_grok_classify: bool = False):
-    """Store a batch of trends from one API call with conservative category tags."""
+def normalize_trend_name(name: str) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip().lstrip("#")).lower()
+
+
+def build_run_id(woeid: int, fetched_at: datetime) -> str:
+    return f"{woeid}-{fetched_at.strftime('%Y%m%d%H%M%S%f')}"
+
+
+def ensure_trend_entity(cur, trend_name: str, observed_at: datetime) -> tuple[int, str, str]:
+    canonical_name = re.sub(r"\s+", " ", (trend_name or "").strip().lstrip("#")) or "Unknown"
+    canonical_normalized = normalize_trend_name(canonical_name)
+
+    cur.execute(
+        """
+        INSERT INTO trend_entities (canonical_name, canonical_name_normalized, first_seen_at, last_seen_at)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (canonical_name_normalized)
+        DO UPDATE SET
+            last_seen_at = GREATEST(trend_entities.last_seen_at, EXCLUDED.last_seen_at)
+        RETURNING entity_id, canonical_name
+        """,
+        (canonical_name, canonical_normalized, observed_at, observed_at),
+    )
+    row = cur.fetchone()
+    entity_id = row["entity_id"]
+    stored_canonical = row["canonical_name"]
+
+    cur.execute(
+        """
+        INSERT INTO trend_aliases (alias_name, alias_normalized, entity_id, first_seen_at, last_seen_at, alias_kind)
+        VALUES (%s, %s, %s, %s, %s, 'observed')
+        ON CONFLICT (alias_normalized)
+        DO UPDATE SET
+            alias_name = EXCLUDED.alias_name,
+            entity_id = EXCLUDED.entity_id,
+            last_seen_at = GREATEST(trend_aliases.last_seen_at, EXCLUDED.last_seen_at)
+        """,
+        (trend_name, normalize_trend_name(trend_name), entity_id, observed_at, observed_at),
+    )
+
+    return entity_id, stored_canonical, canonical_normalized
+
+
+def _get_regime_label(turnover_ratio: float, avg_rank_displacement: float) -> str:
+    churn_score = turnover_ratio * 60 + (min(avg_rank_displacement, 10) / 10) * 40
+    if churn_score >= 80:
+        return "CHAOTIC"
+    if churn_score >= 60:
+        return "VOLATILE"
+    if churn_score >= 40:
+        return "ACTIVE"
+    if churn_score >= 20:
+        return "CALM"
+    return "STABLE"
+
+
+def _calculate_rank_volatility(ranks: list[int]) -> float:
+    if len(ranks) < 2:
+        return 0.0
+    mean = sum(ranks) / len(ranks)
+    variance = sum((rank - mean) ** 2 for rank in ranks) / len(ranks)
+    return round(variance ** 0.5, 2)
+
+
+def rebuild_location_intelligence(conn, woeid: int):
+    """Recompute derived feature tables for one location from raw snapshot_items."""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT run_id, fetched_at, woeid, location_name
+            FROM snapshot_runs
+            WHERE woeid = %s
+              AND source_status IN ('success', 'backfilled')
+              AND item_count > 0
+            ORDER BY fetched_at ASC
+            """,
+            (woeid,),
+        )
+        runs = cur.fetchall()
+        if not runs:
+            return
+
+        cur.execute("DELETE FROM trend_features WHERE woeid = %s", (woeid,))
+        cur.execute("DELETE FROM market_features WHERE woeid = %s", (woeid,))
+        cur.execute("DELETE FROM trend_lifecycle_summary WHERE woeid = %s", (woeid,))
+
+        cur.execute(
+            """
+            SELECT si.run_id, si.fetched_at, si.woeid, si.location_name, si.entity_id,
+                   si.trend_name_raw, si.rank, si.tweet_count, si.volume_source, si.category,
+                   te.canonical_name
+            FROM snapshot_items si
+            JOIN trend_entities te ON te.entity_id = si.entity_id
+            WHERE si.woeid = %s
+            ORDER BY si.fetched_at ASC, si.rank ASC
+            """,
+            (woeid,),
+        )
+        item_rows = cur.fetchall()
+
+        items_by_run = {}
+        for row in item_rows:
+            items_by_run.setdefault(row["run_id"], []).append(row)
+
+        appearance_count = {}
+        current_streak = {}
+        longest_streak = {}
+        reentry_count = {}
+        last_delta = {}
+        rank_history = {}
+        breakout_peak = {}
+        seen_before = set()
+
+        for index, run in enumerate(runs):
+            current_items = items_by_run.get(run["run_id"], [])
+            current_map = {item["entity_id"]: item for item in current_items}
+            previous_items = items_by_run.get(runs[index - 1]["run_id"], []) if index > 0 else []
+            prev_map = {item["entity_id"]: item for item in previous_items}
+            next_items = items_by_run.get(runs[index + 1]["run_id"], []) if index + 1 < len(runs) else []
+            next_ids = {item["entity_id"] for item in next_items}
+            exited_ids = set(prev_map) - set(current_map)
+            persisting_deltas = []
+            category_counts = {}
+            current_volume = 0
+
+            for item in current_items:
+                entity_id = item["entity_id"]
+                prev_item = prev_map.get(entity_id)
+                prev_rank = prev_item["rank"] if prev_item else None
+                prev_tweet_count = prev_item["tweet_count"] if prev_item else None
+                rank_delta = (prev_rank - item["rank"]) if prev_rank is not None else 0
+                rank_velocity = float(rank_delta)
+                rank_acceleration = rank_velocity - last_delta.get(entity_id, 0.0)
+                entry_flag = prev_item is None
+                if entry_flag and entity_id in seen_before:
+                    reentry_count[entity_id] = reentry_count.get(entity_id, 0) + 1
+                appearance_count[entity_id] = appearance_count.get(entity_id, 0) + 1
+                current_streak[entity_id] = (current_streak.get(entity_id, 0) + 1) if not entry_flag else 1
+                longest_streak[entity_id] = max(longest_streak.get(entity_id, 0), current_streak[entity_id])
+                persistence_score = round(min(100.0, current_streak[entity_id] * 12 + appearance_count[entity_id] * 2), 2)
+                breakout_score = round(min(100.0, max(rank_delta, 0) * 8 + (21 - item["rank"]) * 2 + (15 if entry_flag else 0)), 2)
+                rank_history.setdefault(entity_id, []).append(item["rank"])
+                trailing_ranks = rank_history[entity_id][-FEATURE_REBUILD_LOOKBACK:]
+                volatility_score = _calculate_rank_volatility(trailing_ranks)
+                exit_flag = entity_id not in next_ids
+                volume_delta_pct = None
+                if prev_tweet_count and item["tweet_count"]:
+                    volume_delta_pct = round(((item["tweet_count"] - prev_tweet_count) / prev_tweet_count) * 100, 2)
+
+                breakout_peak[entity_id] = max(breakout_peak.get(entity_id, 0.0), breakout_score)
+                seen_before.add(entity_id)
+                last_delta[entity_id] = rank_velocity
+                current_volume += item["tweet_count"] or 0
+                if prev_rank is not None:
+                    persisting_deltas.append(abs(rank_delta))
+                if item["category"]:
+                    category_counts[item["category"]] = category_counts.get(item["category"], 0) + 1
+
+                cur.execute(
+                    """
+                    INSERT INTO trend_features (
+                        run_id, entity_id, fetched_at, woeid, trend_name_raw, canonical_name, category,
+                        rank, prev_rank, rank_delta, rank_velocity, rank_acceleration,
+                        board_age_snapshots, persistence_score, breakout_score, volatility_score,
+                        entry_flag, exit_flag, reentry_count, tweet_count, prev_tweet_count,
+                        volume_delta_pct, volume_source, methodology_version
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        run["run_id"],
+                        entity_id,
+                        run["fetched_at"],
+                        woeid,
+                        item["trend_name_raw"],
+                        item["canonical_name"],
+                        item["category"],
+                        item["rank"],
+                        prev_rank,
+                        rank_delta,
+                        rank_velocity,
+                        rank_acceleration,
+                        current_streak[entity_id],
+                        persistence_score,
+                        breakout_score,
+                        volatility_score,
+                        entry_flag,
+                        exit_flag,
+                        reentry_count.get(entity_id, 0),
+                        item["tweet_count"] or 0,
+                        prev_tweet_count,
+                        volume_delta_pct,
+                        item["volume_source"],
+                        METHODOLOGY_VERSION,
+                    ),
+                )
+
+            trailing_runs = runs[max(0, index - FEATURE_REBUILD_LOOKBACK):index]
+            previous_volumes = []
+            for trailing_run in trailing_runs:
+                trailing_items = items_by_run.get(trailing_run["run_id"], [])
+                previous_volumes.append(sum((item["tweet_count"] or 0) for item in trailing_items))
+            avg_volume = round(sum(previous_volumes) / len(previous_volumes)) if previous_volumes else current_volume
+            volume_deviation_pct = round((((current_volume - avg_volume) / avg_volume) * 100), 2) if avg_volume else 0.0
+            avg_rank_displacement = round(sum(persisting_deltas) / len(persisting_deltas), 2) if persisting_deltas else 0.0
+            top_category_share = round((max(category_counts.values()) / len(current_items)), 4) if category_counts and current_items else 0.0
+            turnover_ratio = round((len(exited_ids) + sum(1 for item in current_items if item["entity_id"] not in prev_map)) / max(len(current_items), 1), 4)
+
+            cur.execute(
+                """
+                INSERT INTO market_features (
+                    run_id, fetched_at, woeid, location_name, board_size, new_entry_count, exit_count,
+                    turnover_ratio, avg_rank_displacement, category_breadth, top_category_share,
+                    market_regime_label, current_volume, avg_volume, volume_deviation_pct,
+                    methodology_version
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    run["run_id"],
+                    run["fetched_at"],
+                    woeid,
+                    run["location_name"],
+                    len(current_items),
+                    sum(1 for item in current_items if item["entity_id"] not in prev_map),
+                    len(exited_ids),
+                    turnover_ratio,
+                    avg_rank_displacement,
+                    len(category_counts),
+                    top_category_share,
+                    _get_regime_label(turnover_ratio, avg_rank_displacement),
+                    current_volume,
+                    avg_volume,
+                    volume_deviation_pct,
+                    METHODOLOGY_VERSION,
+                ),
+            )
+
+        for entity_id, ranks in rank_history.items():
+            feature_rows = []
+            cur.execute(
+                """
+                SELECT tf.run_id, tf.fetched_at, tf.canonical_name, tf.rank, tf.breakout_score, tf.persistence_score
+                FROM trend_features tf
+                WHERE tf.woeid = %s AND tf.entity_id = %s
+                ORDER BY tf.fetched_at ASC
+                """,
+                (woeid, entity_id),
+            )
+            feature_rows = cur.fetchall()
+            if not feature_rows:
+                continue
+            cur.execute(
+                """
+                INSERT INTO trend_lifecycle_summary (
+                    entity_id, woeid, canonical_name, first_seen_at, last_seen_at, latest_run_id,
+                    appearances, reentry_count, current_streak, longest_streak, best_rank, latest_rank,
+                    avg_rank, median_rank, max_breakout_score, persistence_score, methodology_version
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    entity_id,
+                    woeid,
+                    feature_rows[-1]["canonical_name"],
+                    feature_rows[0]["fetched_at"],
+                    feature_rows[-1]["fetched_at"],
+                    feature_rows[-1]["run_id"],
+                    len(feature_rows),
+                    reentry_count.get(entity_id, 0),
+                    current_streak.get(entity_id, 0),
+                    longest_streak.get(entity_id, current_streak.get(entity_id, 0)),
+                    min(ranks),
+                    feature_rows[-1]["rank"],
+                    round(sum(ranks) / len(ranks), 2),
+                    float(statistics.median(ranks)),
+                    breakout_peak.get(entity_id, 0.0),
+                    feature_rows[-1]["persistence_score"],
+                    METHODOLOGY_VERSION,
+                ),
+            )
+
+        cur.execute(
+            """
+            UPDATE snapshot_runs
+            SET feature_status = 'ready',
+                feature_generated_at = NOW(),
+                feature_error = NULL
+            WHERE woeid = %s
+              AND source_status IN ('success', 'backfilled')
+            """,
+            (woeid,),
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        cur.execute(
+            """
+            UPDATE snapshot_runs
+            SET feature_status = 'error',
+                feature_generated_at = NOW(),
+                feature_error = %s
+            WHERE woeid = %s
+            """,
+            (str(exc)[:500], woeid),
+        )
+        conn.commit()
+        raise
+    finally:
+        cur.close()
+
+
+def backfill_intelligence():
+    """Migrate legacy snapshots into raw intelligence tables and recompute features."""
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    migrated_locations = set()
+    migrated_groups = 0
+    try:
+        cur.execute(
+            """
+            SELECT fetched_at, woeid, location_name
+            FROM snapshots
+            GROUP BY fetched_at, woeid, location_name
+            ORDER BY fetched_at ASC, woeid ASC
+            """
+        )
+        groups = cur.fetchall()
+        for group in groups:
+            run_id = build_run_id(group["woeid"], _to_datetime(group["fetched_at"]))
+            cur.execute("SELECT 1 FROM snapshot_runs WHERE run_id = %s", (run_id,))
+            if cur.fetchone():
+                migrated_locations.add(group["woeid"])
+                continue
+
+            cur.execute(
+                """
+                INSERT INTO snapshot_runs (
+                    run_id, fetched_at, woeid, location_name, source_status, source_payload,
+                    methodology_version, item_count, feature_status
+                )
+                VALUES (%s, %s, %s, %s, 'backfilled', NULL, %s, 0, 'pending')
+                """,
+                (run_id, group["fetched_at"], group["woeid"], group["location_name"], METHODOLOGY_VERSION),
+            )
+
+            cur.execute(
+                """
+                SELECT trend_name, rank, tweet_count, category, meta_description, volume_source
+                FROM snapshots
+                WHERE fetched_at = %s AND woeid = %s
+                ORDER BY rank ASC
+                """,
+                (group["fetched_at"], group["woeid"]),
+            )
+            items = cur.fetchall()
+            for item in items:
+                entity_id, _, _ = ensure_trend_entity(cur, item["trend_name"], _to_datetime(group["fetched_at"]))
+                cur.execute(
+                    """
+                    INSERT INTO snapshot_items (
+                        run_id, entity_id, fetched_at, woeid, location_name, trend_name_raw,
+                        trend_name_normalized, rank, tweet_count, meta_description, volume_source,
+                        category, context_cache_key, methodology_version
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        run_id,
+                        entity_id,
+                        group["fetched_at"],
+                        group["woeid"],
+                        group["location_name"],
+                        item["trend_name"],
+                        normalize_trend_name(item["trend_name"]),
+                        item["rank"],
+                        item["tweet_count"] or 0,
+                        item.get("meta_description"),
+                        item.get("volume_source") or "legacy",
+                        item.get("category") or classify_keyword(item["trend_name"]),
+                        normalize_trend_name(item["trend_name"]),
+                        METHODOLOGY_VERSION,
+                    ),
+                )
+
+            cur.execute(
+                "UPDATE snapshot_runs SET item_count = %s WHERE run_id = %s",
+                (len(items), run_id),
+            )
+            migrated_locations.add(group["woeid"])
+            migrated_groups += 1
+
+        conn.commit()
+        for woeid in migrated_locations:
+            rebuild_location_intelligence(conn, woeid)
+    finally:
+        cur.close()
+        conn.close()
+
+    return migrated_groups
+
+
+def store_snapshot(
+    woeid: int,
+    location_name: str,
+    trends: list,
+    source_status: str = "success",
+    source_payload: dict | None = None,
+    fetched_at: datetime | None = None,
+):
+    """Store raw snapshot data plus derived intelligence for one location."""
     conn = get_conn()
     cur = conn.cursor()
-    now = datetime.now(timezone.utc)
-
+    now = fetched_at or datetime.now(timezone.utc)
+    run_id = build_run_id(woeid, now)
     trend_names = [t.get("trend_name", "Unknown") for t in trends]
     categories = classify_trends(trend_names)
 
-    for i, trend in enumerate(trends):
-        name = trend.get("trend_name", "Unknown")
+    try:
         cur.execute(
             """
-            INSERT INTO snapshots (fetched_at, woeid, location_name, trend_name, tweet_count, rank, category)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO snapshot_runs (
+                run_id, fetched_at, woeid, location_name, source_status, source_payload,
+                methodology_version, item_count, feature_status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            ON CONFLICT (run_id) DO UPDATE SET
+                source_status = EXCLUDED.source_status,
+                source_payload = EXCLUDED.source_payload,
+                item_count = EXCLUDED.item_count
             """,
             (
+                run_id,
                 now,
                 woeid,
                 location_name,
-                name,
-                trend.get("tweet_count", 0) or 0,
-                i + 1,
-                categories.get(name),
+                source_status,
+                Json(source_payload) if source_payload is not None else None,
+                METHODOLOGY_VERSION,
+                len(trends),
             ),
         )
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    return len(trends)
+        if source_status in ("success", "backfilled") and trends:
+            for i, trend in enumerate(trends):
+                name = trend.get("trend_name", "Unknown")
+                entity_id, _, _ = ensure_trend_entity(cur, name, now)
+                category = categories.get(name)
+                meta_description = trend.get("meta_description")
+                volume_source = trend.get("volume_source") or ("api" if trend.get("tweet_count") else "unknown")
+                cur.execute(
+                    """
+                    INSERT INTO snapshot_items (
+                        run_id, entity_id, fetched_at, woeid, location_name, trend_name_raw,
+                        trend_name_normalized, rank, tweet_count, meta_description, volume_source,
+                        category, context_cache_key, methodology_version
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (run_id, rank) DO UPDATE SET
+                        entity_id = EXCLUDED.entity_id,
+                        trend_name_raw = EXCLUDED.trend_name_raw,
+                        trend_name_normalized = EXCLUDED.trend_name_normalized,
+                        tweet_count = EXCLUDED.tweet_count,
+                        meta_description = EXCLUDED.meta_description,
+                        volume_source = EXCLUDED.volume_source,
+                        category = EXCLUDED.category
+                    """,
+                    (
+                        run_id,
+                        entity_id,
+                        now,
+                        woeid,
+                        location_name,
+                        name,
+                        normalize_trend_name(name),
+                        i + 1,
+                        trend.get("tweet_count", 0) or 0,
+                        meta_description,
+                        volume_source,
+                        category,
+                        normalize_trend_name(name),
+                        METHODOLOGY_VERSION,
+                    ),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO snapshots (
+                        fetched_at, woeid, location_name, trend_name, tweet_count, rank,
+                        category, run_id, meta_description, volume_source
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        now,
+                        woeid,
+                        location_name,
+                        name,
+                        trend.get("tweet_count", 0) or 0,
+                        i + 1,
+                        category,
+                        run_id,
+                        meta_description,
+                        volume_source,
+                    ),
+                )
+
+        conn.commit()
+        if source_status in ("success", "backfilled") and trends:
+            rebuild_location_intelligence(conn, woeid)
+        return len(trends)
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ── API ───────────────────────────────────────────────────────────────────────
-
-import re
 
 
 def _extract_response_text(data: dict) -> str:
@@ -432,6 +1072,7 @@ def _apply_volume_matches(trends: list, parsed: dict, label: str) -> int:
         vol = find_vol(name)
         if vol is not None and vol > 0:
             trend["tweet_count"] = vol
+            trend["volume_source"] = "grok_agentic" if "Agentic" in label else "grok_fallback"
             print(f"  [{label}] {name}: {vol:,} posts")
             updated += 1
 
@@ -583,8 +1224,8 @@ def parse_volume_string(text: str) -> int:
     return int(val)
 
 
-def fetch_trends(woeid: int) -> list:
-    """Fetch trends for a single WOEID. Returns list of trend dicts."""
+def fetch_trends(woeid: int) -> dict:
+    """Fetch trends for a single WOEID with source payload and status."""
     if not BEARER_TOKEN:
         print("ERROR: Set X_BEARER_TOKEN environment variable.")
         print("  export X_BEARER_TOKEN=\"your_bearer_token\"")
@@ -597,28 +1238,36 @@ def fetch_trends(woeid: int) -> list:
         resp = requests.get(url, headers=headers, timeout=15)
     except requests.RequestException as e:
         print(f"  [!] Request failed for WOEID {woeid}: {e}")
-        return []
+        return {"status": "request_error", "trends": [], "payload": {"error": str(e)}}
 
     if resp.status_code == 429:
         retry_after = resp.headers.get("retry-after", "unknown")
         print(f"  [!] Rate limited. Retry after {retry_after}s")
-        return []
+        return {"status": "rate_limited", "trends": [], "payload": {"retry_after": retry_after}}
 
     if resp.status_code != 200:
         print(f"  [!] HTTP {resp.status_code} for WOEID {woeid}: {resp.text[:200]}")
-        return []
+        return {
+            "status": f"http_{resp.status_code}",
+            "trends": [],
+            "payload": {"status_code": resp.status_code, "body": resp.text[:500]},
+        }
 
     data = resp.json()
     raw_trends = data.get("data", [])
 
     # Try to extract volume from meta_description (e.g. "17.7K posts")
     for trend in raw_trends:
+        if trend.get("tweet_count"):
+            trend["volume_source"] = "api"
         if not trend.get("tweet_count") and trend.get("meta_description"):
             vol = parse_volume_string(trend["meta_description"])
             if vol > 0:
                 trend["tweet_count"] = vol
+                trend["volume_source"] = "meta_description"
+        trend.setdefault("volume_source", "unknown")
 
-    return raw_trends
+    return {"status": "success", "trends": raw_trends, "payload": data}
 
 
 def collect_all(grok_limit: int = DEFAULT_GROK_AGENTIC_VOLUME_LIMIT):
@@ -629,16 +1278,30 @@ def collect_all(grok_limit: int = DEFAULT_GROK_AGENTIC_VOLUME_LIMIT):
 
     total = 0
     for woeid, name in LOCATIONS.items():
-        trends = fetch_trends(woeid)
+        fetch_result = fetch_trends(woeid)
+        trends = fetch_result["trends"]
         if trends:
             if woeid == 23424977 and XAI_API_KEY:
                 enrich_volume_with_grok_agentic(trends, limit=grok_limit)
                 time.sleep(2)
-            count = store_snapshot(woeid, name, trends, use_grok_classify=(woeid == 23424977 and bool(XAI_API_KEY)))
+            count = store_snapshot(
+                woeid,
+                name,
+                trends,
+                source_status="success",
+                source_payload=fetch_result["payload"],
+            )
             print(f"  ✓ {name}: {count} trends stored")
             total += count
         else:
-            print(f"  ✗ {name}: no data")
+            store_snapshot(
+                woeid,
+                name,
+                [],
+                source_status=fetch_result["status"],
+                source_payload=fetch_result["payload"],
+            )
+            print(f"  ✗ {name}: no data ({fetch_result['status']})")
         time.sleep(1)  # gentle pause between requests
 
     print(f"\n  Total: {total} trend records saved to Neon Postgres")
@@ -911,6 +1574,18 @@ def db_stats():
     cur.execute("SELECT COUNT(DISTINCT trend_name) as n FROM snapshots")
     unique_trends = cur.fetchone()["n"]
 
+    cur.execute("SELECT COUNT(*) as n FROM snapshot_runs")
+    total_runs = cur.fetchone()["n"]
+
+    cur.execute("SELECT COUNT(*) as n FROM trend_features")
+    total_features = cur.fetchone()["n"]
+
+    cur.execute("""
+        SELECT MAX(feature_generated_at) as latest, COUNT(*) FILTER (WHERE feature_status = 'ready') as ready
+        FROM snapshot_runs
+    """)
+    feature_meta = cur.fetchone()
+
     cur.close()
     conn.close()
 
@@ -919,8 +1594,160 @@ def db_stats():
     print(f"  Total records:    {total_rows:,}")
     print(f"  Snapshots taken:  {total_snapshots}")
     print(f"  Unique trends:    {unique_trends}")
+    print(f"  Snapshot runs:    {total_runs}")
+    print(f"  Trend features:   {total_features}")
     print(f"  First snapshot:   {first}")
     print(f"  Latest snapshot:  {last}\n")
+    if feature_meta["latest"]:
+        print(f"  Latest features:  {feature_meta['latest']}")
+        print(f"  Feature-ready:    {feature_meta['ready']}\n")
+
+
+def quality_checks():
+    """Run basic data quality checks for ingestion and derived features."""
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT woeid, fetched_at, COUNT(*) AS n
+            FROM snapshot_runs
+            GROUP BY woeid, fetched_at
+            HAVING COUNT(*) > 1
+        """)
+        duplicate_runs = cur.fetchall()
+
+        cur.execute("""
+            SELECT run_id, woeid, location_name, fetched_at
+            FROM snapshot_runs
+            WHERE fetched_at IS NULL OR location_name IS NULL
+        """)
+        null_runs = cur.fetchall()
+
+        cur.execute("""
+            SELECT run_id, woeid, location_name, item_count
+            FROM snapshot_runs
+            WHERE source_status IN ('success', 'backfilled')
+              AND item_count = 0
+        """)
+        empty_success = cur.fetchall()
+
+        cur.execute("""
+            SELECT run_id, woeid, ARRAY_AGG(rank ORDER BY rank) AS ranks
+            FROM snapshot_items
+            GROUP BY run_id, woeid
+        """)
+        rank_rows = cur.fetchall()
+        bad_rank_runs = []
+        for row in rank_rows:
+            expected = list(range(1, len(row["ranks"]) + 1))
+            if row["ranks"] != expected:
+                bad_rank_runs.append({"run_id": row["run_id"], "woeid": row["woeid"], "ranks": row["ranks"]})
+
+        cur.execute("""
+            SELECT woeid, location_name, MAX(fetched_at) AS latest
+            FROM snapshot_runs
+            WHERE source_status IN ('success', 'backfilled')
+            GROUP BY woeid, location_name
+            ORDER BY woeid
+        """)
+        freshness_rows = cur.fetchall()
+
+        now = datetime.now(timezone.utc)
+        stale_locations = []
+        for row in freshness_rows:
+            age_seconds = (now - _to_datetime(row["latest"])).total_seconds()
+            if age_seconds > (POLL_INTERVAL_SECONDS * 2):
+                stale_locations.append({
+                    "woeid": row["woeid"],
+                    "location_name": row["location_name"],
+                    "age_hours": round(age_seconds / 3600, 2),
+                })
+
+        print("\n  Trndex Quality Checks")
+        print("  ─────────────────────")
+        print(f"  Duplicate runs:      {len(duplicate_runs)}")
+        print(f"  Null-timestamp runs: {len(null_runs)}")
+        print(f"  Empty success runs:  {len(empty_success)}")
+        print(f"  Rank-gap runs:       {len(bad_rank_runs)}")
+        print(f"  Stale locations:     {len(stale_locations)}")
+        if stale_locations:
+            print("  Stale detail:")
+            for row in stale_locations:
+                print(f"    - {row['location_name']} ({row['woeid']}): {row['age_hours']}h old")
+
+        return {
+            "duplicate_runs": duplicate_runs,
+            "null_runs": null_runs,
+            "empty_success": empty_success,
+            "bad_rank_runs": bad_rank_runs,
+            "stale_locations": stale_locations,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+def ops_report():
+    """Print operational metrics for ingestion and feature freshness."""
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE source_status IN ('success', 'backfilled')) AS successful_runs,
+                COUNT(*) FILTER (WHERE source_status NOT IN ('success', 'backfilled')) AS failed_runs,
+                COUNT(*) FILTER (WHERE feature_status = 'ready') AS ready_features,
+                COUNT(*) FILTER (WHERE feature_status = 'error') AS failed_features,
+                MAX(feature_generated_at) AS latest_feature_at
+            FROM snapshot_runs
+        """)
+        summary = cur.fetchone()
+
+        cur.execute("""
+            SELECT woeid, location_name, MAX(fetched_at) AS latest_snapshot, MAX(feature_generated_at) AS latest_feature
+            FROM snapshot_runs
+            GROUP BY woeid, location_name
+            ORDER BY woeid
+        """)
+        freshness = cur.fetchall()
+
+        print("\n  Trndex Ops Report")
+        print("  ─────────────────")
+        print(f"  Successful runs:   {summary['successful_runs']}")
+        print(f"  Failed runs:       {summary['failed_runs']}")
+        print(f"  Feature-ready runs:{summary['ready_features']}")
+        print(f"  Feature errors:    {summary['failed_features']}")
+        print(f"  Latest feature at: {summary['latest_feature_at']}")
+        print("  Freshness by location:")
+        for row in freshness:
+            print(
+                f"    - {row['location_name']} ({row['woeid']}): "
+                f"snapshot={row['latest_snapshot']} feature={row['latest_feature']}"
+            )
+
+        return summary
+    finally:
+        cur.close()
+        conn.close()
+
+
+def bootstrap_intelligence():
+    """Backfill legacy snapshots into the new schema when needed."""
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT COUNT(*) AS n FROM snapshots")
+        snapshot_count = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*) AS n FROM snapshot_runs")
+        run_count = cur.fetchone()["n"]
+    finally:
+        cur.close()
+        conn.close()
+
+    if snapshot_count > 0 and run_count == 0:
+        migrated = backfill_intelligence()
+        if migrated:
+            print(f"  Bootstrapped intelligence schema from {migrated} legacy snapshot groups.")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -933,6 +1760,9 @@ def main():
     parser.add_argument("--pulse", action="store_true", help="View Trend Pulse score only")
     parser.add_argument("--export", action="store_true", help="Export momentum data as JSON")
     parser.add_argument("--stats", action="store_true", help="Show database statistics")
+    parser.add_argument("--backfill-intelligence", action="store_true", help="Backfill raw intelligence tables and derived features from legacy snapshots")
+    parser.add_argument("--quality-checks", action="store_true", help="Run data quality checks")
+    parser.add_argument("--ops", action="store_true", help="Show ingestion and feature freshness metrics")
     parser.add_argument("--woeid", type=int, default=23424977, help="WOEID for view/export (default: US)")
     parser.add_argument("--interval", type=int, default=POLL_INTERVAL_SECONDS,
                         help="Poll interval in seconds for --loop (default: 7200)")
@@ -947,7 +1777,14 @@ def main():
 
     init_db()
 
-    if args.stats:
+    if args.backfill_intelligence:
+        migrated = backfill_intelligence()
+        print(f"  Backfilled {migrated} legacy snapshot groups.")
+    elif args.quality_checks:
+        quality_checks()
+    elif args.ops:
+        ops_report()
+    elif args.stats:
         db_stats()
     elif args.pulse:
         location_name = LOCATIONS.get(args.woeid, f"WOEID {args.woeid}")
