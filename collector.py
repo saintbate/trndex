@@ -288,16 +288,16 @@ def init_db():
     cur = conn.cursor()
     try:
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS snapshots (
+        CREATE TABLE IF NOT EXISTS snapshots (
                 id SERIAL PRIMARY KEY,
                 fetched_at TIMESTAMPTZ NOT NULL,
-                woeid INTEGER NOT NULL,
-                location_name TEXT NOT NULL,
-                trend_name TEXT NOT NULL,
-                tweet_count INTEGER DEFAULT 0,
-                rank INTEGER DEFAULT 0
-            )
-        """)
+            woeid INTEGER NOT NULL,
+            location_name TEXT NOT NULL,
+            trend_name TEXT NOT NULL,
+            tweet_count INTEGER DEFAULT 0,
+            rank INTEGER DEFAULT 0
+        )
+    """)
         cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS category TEXT")
         cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS run_id TEXT")
         cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS meta_description TEXT")
@@ -483,13 +483,13 @@ def init_db():
         """)
         cur.execute("ALTER TABLE trend_features ADD COLUMN IF NOT EXISTS spread_score REAL NOT NULL DEFAULT 0")
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_snapshots_trend
-            ON snapshots(trend_name, woeid, fetched_at)
-        """)
+        CREATE INDEX IF NOT EXISTS idx_snapshots_trend
+        ON snapshots(trend_name, woeid, fetched_at)
+    """)
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_snapshots_time
-            ON snapshots(fetched_at DESC)
-        """)
+        CREATE INDEX IF NOT EXISTS idx_snapshots_time
+        ON snapshots(fetched_at DESC)
+    """)
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_snapshots_woeid_time
             ON snapshots(woeid, fetched_at DESC)
@@ -884,7 +884,7 @@ def rebuild_location_intelligence(conn, woeid: int):
             """,
             (woeid,),
         )
-        conn.commit()
+    conn.commit()
     except Exception as exc:
         conn.rollback()
         cur.execute(
@@ -988,7 +988,7 @@ def backfill_intelligence():
             rebuild_location_intelligence(conn, woeid)
     finally:
         cur.close()
-        conn.close()
+    conn.close()
 
     return migrated_groups
 
@@ -1035,7 +1035,7 @@ def store_snapshot(
         )
 
         if source_status in ("success", "backfilled") and trends:
-            for i, trend in enumerate(trends):
+    for i, trend in enumerate(trends):
                 name = trend.get("trend_name", "Unknown")
                 entity_id, _, _ = ensure_trend_entity(cur, name, now)
                 category = categories.get(name)
@@ -1061,9 +1061,9 @@ def store_snapshot(
                     (
                         run_id,
                         entity_id,
-                        now,
-                        woeid,
-                        location_name,
+                now,
+                woeid,
+                location_name,
                         name,
                         normalize_trend_name(name),
                         i + 1,
@@ -1088,19 +1088,19 @@ def store_snapshot(
                         woeid,
                         location_name,
                         name,
-                        trend.get("tweet_count", 0) or 0,
-                        i + 1,
+                trend.get("tweet_count", 0) or 0,
+                i + 1,
                         category,
                         run_id,
                         meta_description,
                         volume_source,
-                    ),
-                )
+            ),
+        )
 
-        conn.commit()
+    conn.commit()
         if source_status in ("success", "backfilled") and trends:
             rebuild_location_intelligence(conn, woeid)
-        return len(trends)
+    return len(trends)
     finally:
         cur.close()
         conn.close()
@@ -1550,7 +1550,7 @@ def compute_pulse(woeid: int = 23424977, window_hours: int = 24):
     """, (woeid, cutoff, latest_time))
     window_rows = cur.fetchall()
     cur.close()
-    conn.close()
+        conn.close()
 
     if not window_rows:
         return {

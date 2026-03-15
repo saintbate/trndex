@@ -452,6 +452,12 @@ export default function Dashboard() {
           <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">
             LIVE
           </span>
+          <a
+            href="/research"
+            className="font-mono text-[8px] text-white/30 hover:text-white/50 tracking-[0.08em] ml-2"
+          >
+            RESEARCH
+          </a>
         </div>
         <div className="text-right">
           <div className="font-mono text-[15px] font-bold text-white/70">
