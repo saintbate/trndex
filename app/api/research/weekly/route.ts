@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       .slice(0, limit);
 
     const categoryBreakdown: Record<string, number> = {};
-    for (const e of byEntity.values()) {
+    for (const e of Array.from(byEntity.values())) {
       const cat = e.category || "Untagged";
       categoryBreakdown[cat] = (categoryBreakdown[cat] ?? 0) + 1;
     }
