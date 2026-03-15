@@ -18,9 +18,9 @@ const grotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://trndex.live"),
-  title: "TRNDEX — The Trend Exchange",
+  title: "TRNDEX — US Trend Snapshot Intelligence",
   description:
-    "Real-time stock exchange for internet culture. See what's trending, what's surging, what's crashing.",
+    "US trend snapshots, breakout signals, and market context for researchers tracking internet attention.",
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml", sizes: "any" },
@@ -30,16 +30,16 @@ export const metadata: Metadata = {
     apple: "/apple-icon.png",
   },
   openGraph: {
-    title: "TRNDEX — The Trend Exchange",
-    description: "Real-time momentum signals for X/Twitter trends.",
+    title: "TRNDEX — US Trend Snapshot Intelligence",
+    description: "Snapshot-based momentum signals for US X/Twitter trends.",
     url: "https://trndex.live",
     images: ["/api/og"],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "TRNDEX — The Trend Exchange",
-    description: "Real-time momentum signals for X/Twitter trends.",
+    title: "TRNDEX — US Trend Snapshot Intelligence",
+    description: "Snapshot-based momentum signals for US X/Twitter trends.",
     images: ["/api/og"],
   },
 };

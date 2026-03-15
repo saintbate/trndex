@@ -5,6 +5,10 @@ export interface TrendsMeta {
   previous_snapshot: string | null;
   location_woeid: number;
   location_name: string;
+  scope: "US";
+  current_snapshot_age_minutes: number;
+  expected_cadence_minutes: number;
+  is_stale: boolean;
 }
 
 export interface Pulse {

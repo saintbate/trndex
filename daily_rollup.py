@@ -13,6 +13,7 @@ Setup:
 
 import os
 import argparse
+import sys
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -87,25 +88,48 @@ def run_rollup(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> dict:
         # Daily trend rollup
         cur.execute(
             """
+            WITH latest_entity_rows AS (
+                SELECT DISTINCT ON (tf.entity_id)
+                    tf.entity_id,
+                    tf.trend_name_raw,
+                    tf.canonical_name,
+                    tf.category,
+                    tf.fetched_at
+                FROM trend_features tf
+                WHERE tf.woeid = %s
+                  AND tf.fetched_at >= %s
+                  AND tf.fetched_at < %s
+                ORDER BY tf.entity_id, tf.fetched_at DESC
+            ),
+            entity_rollup AS (
+                SELECT
+                    tf.woeid,
+                    tf.entity_id,
+                    COUNT(*)::int AS appearances,
+                    AVG(tf.rank)::real AS avg_rank,
+                    MIN(tf.rank)::int AS best_rank
+                FROM trend_features tf
+                WHERE tf.woeid = %s
+                  AND tf.fetched_at >= %s
+                  AND tf.fetched_at < %s
+                GROUP BY tf.woeid, tf.entity_id
+            )
             INSERT INTO daily_trend_rollup (
                 bucket_date, woeid, entity_id, trend_name_raw, canonical_name, category,
                 appearances, avg_rank, best_rank
             )
             SELECT
                 %s,
-                tf.woeid,
-                tf.entity_id,
-                MAX(tf.trend_name_raw),
-                MAX(tf.canonical_name),
-                MAX(tf.category),
-                COUNT(*)::int,
-                AVG(tf.rank)::real,
-                MIN(tf.rank)::int
-            FROM trend_features tf
-            WHERE tf.woeid = %s
-              AND tf.fetched_at >= %s
-              AND tf.fetched_at < %s
-            GROUP BY tf.woeid, tf.entity_id
+                er.woeid,
+                er.entity_id,
+                ler.trend_name_raw,
+                ler.canonical_name,
+                ler.category,
+                er.appearances,
+                er.avg_rank,
+                er.best_rank
+            FROM entity_rollup er
+            JOIN latest_entity_rows ler ON ler.entity_id = er.entity_id
             ON CONFLICT (bucket_date, woeid, entity_id) DO UPDATE SET
                 trend_name_raw = EXCLUDED.trend_name_raw,
                 canonical_name = EXCLUDED.canonical_name,
@@ -114,7 +138,7 @@ def run_rollup(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> dict:
                 avg_rank = EXCLUDED.avg_rank,
                 best_rank = EXCLUDED.best_rank
             """,
-            (bucket_date, US_WOEID, dt_start, dt_end),
+            (US_WOEID, dt_start, dt_end, US_WOEID, dt_start, dt_end, bucket_date),
         )
         trends_stored += cur.rowcount
 
@@ -206,6 +230,8 @@ def main():
     print(f"  Category rollups: {result.get('categories', 0)}")
     print(f"  Board summaries: {result.get('boards', 0)}")
     print(f"\n  Done.\n")
+    if result.get("dates", 0) <= 0 or result.get("boards", 0) <= 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

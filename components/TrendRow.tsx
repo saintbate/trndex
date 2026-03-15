@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { CATEGORY_COLORS } from "@/lib/categories";
 import type { Trend } from "@/lib/types";
@@ -182,26 +183,31 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
         </div>
 
         <div className="text-right">
-          <span
-            className="font-mono text-[12.5px] font-bold rounded px-1.5 py-0.5"
-            style={{
-              color: trend.is_new ? "#FBBF24" : c,
-              background: `${trend.is_new ? "#FBBF24" : c}0D`,
-            }}
-          >
-            {formatDelta(trend)}
-            {!trend.is_new && trend.delta !== 0 && (
-              <span className="ml-0.5">
-                {trend.direction === "up" ? "▲" : "▼"}
-              </span>
-            )}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className="font-mono text-[12.5px] font-bold rounded px-1.5 py-0.5"
+              style={{
+                color: trend.is_new ? "#FBBF24" : c,
+                background: `${trend.is_new ? "#FBBF24" : c}0D`,
+              }}
+            >
+              {formatDelta(trend)}
+              {!trend.is_new && trend.delta !== 0 && (
+                <span className="ml-0.5">
+                  {trend.direction === "up" ? "▲" : "▼"}
+                </span>
+              )}
+            </span>
+            <span className="font-mono text-[8px] tracking-[0.08em] text-white/20">
+              {expanded ? "HIDE DETAILS" : "VIEW DETAILS"}
+            </span>
+          </div>
         </div>
       </div>
 
       <div
         className="overflow-hidden transition-[max-height,opacity] duration-150 ease-in-out"
-        style={{ maxHeight: expanded ? 96 : 0, opacity: expanded ? 1 : 0 }}
+        style={{ maxHeight: expanded ? 220 : 0, opacity: expanded ? 1 : 0 }}
       >
         <div className="grid trend-row-grid no-vol px-4 sm:px-5 pb-3">
           <div />
@@ -210,30 +216,38 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
               <div className="h-3 w-[72%] rounded bg-white/[0.05] animate-pulse" />
             ) : (
               <div className="font-mono text-[11px] leading-[1.55] text-white/[0.45] pr-2">
-                {contextError || context}
+                {contextError || context || "Context is still being generated for this trend."}
               </div>
             )}
-            <div className="font-mono text-[9px] text-white/25">
-              Predict: Will this stay on the board in 4 hours?
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/research?trend=${encodeURIComponent(trend.trend_name)}`}
+                className="font-mono text-[9px] rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-white/55 hover:text-white/85 hover:border-white/20 transition-colors"
+              >
+                OPEN IN RESEARCH
+              </Link>
+            </div>
+            <div className="font-mono text-[9px] text-white/25 space-y-1">
+              <div>Predict: Will this stay on the board in 4 hours?</div>
               {!myPrediction ? (
-                <span className="ml-2">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => handlePredict("yes")}
-                    className="text-[#00E676] hover:underline mr-2"
+                    className="rounded border border-[#00E676]/20 bg-[#00E676]/[0.08] px-2 py-1 text-[#00E676] hover:bg-[#00E676]/[0.12]"
                   >
                     Yes
                   </button>
                   <button
                     onClick={() => handlePredict("no")}
-                    className="text-[#FF5252] hover:underline"
+                    className="rounded border border-[#FF5252]/20 bg-[#FF5252]/[0.08] px-2 py-1 text-[#FF5252] hover:bg-[#FF5252]/[0.12]"
                   >
                     No
                   </button>
-                </span>
+                </div>
               ) : resolveResult ? (
-                <span className="ml-2 text-white/50">
+                <div className="text-white/50">
                   {resolveResult.was_on_board === null ? (
-                    "No snapshot in window — couldn't resolve."
+                    "Waiting for a usable post-target snapshot."
                   ) : (
                     <>
                       You said {myPrediction.prediction.toUpperCase()} — {resolveResult.was_on_board ? "Still on board" : "Dropped off"}.{" "}
@@ -243,11 +257,11 @@ export default function TrendRow({ trend, index }: TrendRowProps) {
                         : "Wrong."}
                     </>
                   )}
-                </span>
+                </div>
               ) : resolving ? (
-                <span className="ml-2 text-white/30">Checking...</span>
+                <div className="text-white/30">Checking...</div>
               ) : (
-                <span className="ml-2 text-white/30">You said {myPrediction.prediction.toUpperCase()}. Check back in ~4h.</span>
+                <div className="text-white/30">You said {myPrediction.prediction.toUpperCase()}. We will resolve this once a usable post-target US snapshot lands.</div>
               )}
             </div>
           </div>

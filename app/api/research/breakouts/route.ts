@@ -10,6 +10,13 @@ export async function GET(request: NextRequest) {
   const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
   const sql = getDb();
 
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Breakout research is currently available for US trends only." },
+      { status: 400 }
+    );
+  }
+
   try {
     const rows = await sql`
       SELECT DISTINCT ON (tf.entity_id)
@@ -38,6 +45,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       meta: {
         location_woeid: woeid,
+        scope: "US",
         window_hours: windowHours,
         limit,
       },

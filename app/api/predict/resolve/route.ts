@@ -6,9 +6,18 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const trend = searchParams.get("trend")?.trim();
   const predictedAt = searchParams.get("predicted_at")?.trim();
+  const woeid = parseInt(searchParams.get("woeid") || "23424977", 10);
+  const resolutionHours = 4;
+  const toleranceHours = 8;
 
   if (!trend || !predictedAt) {
     return NextResponse.json({ error: "Missing trend or predicted_at" }, { status: 400 });
+  }
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Prediction resolution is currently available for US trends only." },
+      { status: 400 }
+    );
   }
 
   const predTime = new Date(predictedAt);
@@ -16,11 +25,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid predicted_at" }, { status: 400 });
   }
 
-  const windowStart = new Date(predTime.getTime() + 3.5 * 60 * 60 * 1000);
-  const windowEnd = new Date(predTime.getTime() + 4.5 * 60 * 60 * 1000);
+  const targetTime = new Date(predTime.getTime() + resolutionHours * 60 * 60 * 1000);
+  const windowEnd = new Date(targetTime.getTime() + toleranceHours * 60 * 60 * 1000);
   const now = new Date();
 
-  if (windowEnd > now) {
+  if (targetTime > now) {
     return NextResponse.json({
       resolved: false,
       reason: "too_soon",
@@ -35,9 +44,9 @@ export async function GET(request: NextRequest) {
     const runs = await sql`
       SELECT run_id, fetched_at
       FROM snapshot_runs
-      WHERE woeid = 23424977
+      WHERE woeid = ${woeid}
         AND source_status IN ('success', 'backfilled')
-        AND fetched_at >= ${windowStart.toISOString()}
+        AND fetched_at >= ${targetTime.toISOString()}
         AND fetched_at <= ${windowEnd.toISOString()}
       ORDER BY fetched_at ASC
       LIMIT 1
@@ -45,11 +54,14 @@ export async function GET(request: NextRequest) {
 
     if (runs.length === 0) {
       return NextResponse.json({
-        resolved: true,
+        resolved: false,
         was_on_board: null,
         snapshot_at: null,
-        reason: "no_snapshot",
-        message: "No snapshot in the 4-hour window",
+        reason: now < windowEnd ? "awaiting_snapshot" : "no_usable_snapshot",
+        message:
+          now < windowEnd
+            ? "Waiting for the first usable post-target snapshot."
+            : "No usable post-target snapshot was collected for this prediction yet.",
       });
     }
 

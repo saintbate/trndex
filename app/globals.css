@@ -44,6 +44,196 @@ body {
   grid-template-columns: 34px 1fr 68px 84px;
 }
 
+.research-shell {
+  background:
+    radial-gradient(circle at top center, rgba(124, 77, 255, 0.12), transparent 34%),
+    radial-gradient(circle at 18% 18%, rgba(0, 230, 118, 0.09), transparent 28%),
+    radial-gradient(circle at 82% 26%, rgba(251, 191, 36, 0.08), transparent 30%),
+    #07070c;
+}
+
+.research-panel,
+.research-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.research-panel::before,
+.research-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 38%, transparent 62%, rgba(255, 255, 255, 0.03));
+}
+
+.research-card {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+}
+
+.research-mini-card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 18px 36px rgba(0, 0, 0, 0.22);
+}
+
+.research-stat-chip {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.65rem 0.75rem;
+}
+
+.research-stat-label {
+  font-family: var(--font-jetbrains);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.research-stat-value {
+  margin-top: 0.35rem;
+  font-family: var(--font-jetbrains);
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.research-select-chip {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.35rem 0.65rem;
+  font-family: var(--font-jetbrains);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.52);
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.research-select-chip:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
+}
+
+.research-select-chip-active {
+  border-color: rgba(0, 230, 118, 0.24);
+  background: rgba(0, 230, 118, 0.08);
+  color: #00e676;
+}
+
+.research-breakout-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.75rem;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.research-breakout-row:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  transform: translateY(-1px);
+}
+
+.research-breakout-row-active {
+  border-color: rgba(251, 191, 36, 0.2);
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.research-history-track {
+  display: flex;
+  align-items: end;
+  gap: 0.4rem;
+  height: 68px;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(180deg, rgba(0, 230, 118, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.research-history-bar {
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(0, 230, 118, 0.95), rgba(124, 77, 255, 0.75));
+  box-shadow: 0 0 16px rgba(0, 230, 118, 0.16);
+  min-height: 10%;
+}
+
+.analyst-note-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(124, 77, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(124, 77, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+.analyst-note-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #7c4dff, #00e676);
+  opacity: 0.85;
+}
+
+.analyst-note-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: rgba(255, 255, 255, 0.7);
+  animation: analyst-cursor-blink 1s steps(1, end) infinite;
+}
+
+.research-rise {
+  animation: research-rise 420ms ease-out both;
+}
+
+@keyframes analyst-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes research-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 640px) {
   .trend-row-grid {
     grid-template-columns: 28px 1fr 58px 60px;

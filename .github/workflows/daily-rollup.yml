@@ -2,12 +2,20 @@ name: Daily Rollup
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "45 6 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-rollup
+  cancel-in-progress: false
 
 jobs:
   rollup:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +27,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Validate Python collectors
+        run: python -m py_compile collector.py market_collector.py gt_collector.py daily_rollup.py ops_health.py
+
       - name: Run daily rollup
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python daily_rollup.py --once
+
+      - name: Verify rollup freshness
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python ops_health.py --check rollup

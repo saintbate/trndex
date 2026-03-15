@@ -5,9 +5,17 @@ on:
     - cron: "15 */2 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: collect-google-trends
+  cancel-in-progress: false
+
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +27,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Validate Python collectors
+        run: python -m py_compile collector.py market_collector.py gt_collector.py daily_rollup.py ops_health.py
+
       - name: Run Google Trends collector
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python gt_collector.py --once
+
+      - name: Verify Google Trends freshness
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python ops_health.py --check google-trends

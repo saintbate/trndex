@@ -11,6 +11,12 @@ export async function GET(request: NextRequest) {
   if (!trend) {
     return NextResponse.json({ error: "Missing trend query parameter" }, { status: 400 });
   }
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Trend history is currently available for US trends only." },
+      { status: 400 }
+    );
+  }
 
   const sql = getDb();
   const normalized = normalizeTrendName(trend);
@@ -71,6 +77,7 @@ export async function GET(request: NextRequest) {
         entity_id: entityId,
         location_woeid: woeid,
         window_hours: windowHours,
+        google_trends_mode: "qualitative",
       },
       lifecycle: lifecycleRows[0] ?? null,
       history: historyRows,

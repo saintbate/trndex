@@ -9,6 +9,13 @@ export async function GET(request: NextRequest) {
   const woeid = parseInt(searchParams.get("woeid") || "23424977", 10);
   const limit = Math.max(5, Math.min(30, parseInt(searchParams.get("limit") || "15", 10)));
 
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Weekly analysis is currently available for US trends only." },
+      { status: 400 }
+    );
+  }
+
   const now = Date.now();
   const cutoff = new Date(now - WINDOW_HOURS * 60 * 60 * 1000).toISOString();
   const priorCutoff = new Date(now - PRIOR_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
@@ -186,6 +193,7 @@ export async function GET(request: NextRequest) {
         period: "7d",
         window_hours: WINDOW_HOURS,
         woeid,
+        scope: "US",
         runs_in_window: runs.length,
         from: cutoff,
       },
@@ -197,7 +205,9 @@ export async function GET(request: NextRequest) {
         last_regime: lastRegime,
       },
       category_breakdown: categoryBreakdown,
+      category_entity_share: categoryShare,
       category_share: categoryShare,
+      category_share_note: "Share is based on distinct trends/entities in the window, not impression-weighted exposure.",
       top_trends: topTrends,
       narrative_arcs: narrativeArcs,
     });

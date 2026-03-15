@@ -12,7 +12,7 @@ type SortMode = "rank" | "momentum" | "gainers" | "losers" | "breakouts";
 type AnalysisPeriod = "weekly" | "monthly" | null;
 
 interface WeeklyAnalysis {
-  meta: { period: string; runs_in_window: number; from: string };
+  meta: { period: string; runs_in_window: number; from: string; scope?: string };
   board_stats: {
     total_new_entries: number;
     total_exits: number;
@@ -21,6 +21,7 @@ interface WeeklyAnalysis {
     last_regime: string | null;
   };
   category_breakdown: Record<string, number>;
+  category_entity_share?: Record<string, { count: number; share_pct: number; momentum_pp: number }>;
   category_share?: Record<string, { count: number; share_pct: number; momentum_pp: number }>;
   top_trends: Array<{
     trend_name: string;
@@ -63,6 +64,16 @@ const ALL_CATEGORIES = [
 
 const FILTER_OPTIONS = [...ALL_CATEGORIES, "Untagged"] as const;
 
+function formatAgeMinutes(totalMinutes: number) {
+  if (totalMinutes < 60) return `${totalMinutes}m ago`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) return minutes > 0 ? `${hours}h ${minutes}m ago` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h ago` : `${days}d ago`;
+}
+
 function SkeletonRow({ index }: { index: number }) {
   return (
     <div
@@ -101,7 +112,7 @@ function SkeletonLoader() {
       <div className="flex justify-between items-center px-5 pt-3.5 pb-2.5 border-b border-white/5">
         <div className="flex items-center gap-2.5">
           <Wordmark className="h-5 w-auto" />
-          <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">LIVE</span>
+          <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">US SNAPSHOT</span>
         </div>
         <div className="text-right">
           <div className="w-20 h-4 rounded bg-white/[0.04] animate-pulse mb-1 ml-auto" />
@@ -129,7 +140,7 @@ function SkeletonLoader() {
       <div className="trend-row-grid items-center px-5 py-1.5 border-b border-white/5 font-mono text-[8px] font-semibold tracking-[0.1em] text-white/[0.18] sticky top-0 bg-surface z-10 no-vol">
         <span>#</span>
         <span>TREND</span>
-        <span className="text-center sparkline-cell">6S</span>
+        <span className="text-center sparkline-cell">12H</span>
         <span className="text-right">&Delta;</span>
       </div>
 
@@ -217,9 +228,10 @@ function AnalysisPanel({
     );
   }
 
-  const { board_stats, category_breakdown, category_share, top_trends, narrative_arcs, meta } = analysis;
-  const cats = category_share
-    ? Object.entries(category_share).sort((a, b) => b[1].share_pct - a[1].share_pct)
+  const { board_stats, category_breakdown, category_entity_share, category_share, top_trends, narrative_arcs, meta } = analysis;
+  const resolvedCategoryShare = category_entity_share ?? category_share;
+  const cats = resolvedCategoryShare
+    ? Object.entries(resolvedCategoryShare).sort((a, b) => b[1].share_pct - a[1].share_pct)
     : Object.entries(category_breakdown).sort((a, b) => b[1] - a[1]);
 
   return (
@@ -251,7 +263,7 @@ function AnalysisPanel({
 
       {cats.length > 0 && (
         <div>
-          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">CATEGORY SHARE & MOMENTUM</div>
+          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">CATEGORY ENTITY SHARE & MOMENTUM</div>
           <div className="flex flex-wrap gap-1.5">
             {cats.map(([cat, v]) => {
               const cc = CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? "rgba(255,255,255,0.3)";
@@ -317,6 +329,16 @@ export default function Dashboard() {
   const [time, setTime] = useState(new Date());
   const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(null);
   const lastSnapshot = useRef<string | null>(null);
+  const snapshotAgeLabel = data ? formatAgeMinutes(data.meta.current_snapshot_age_minutes) : "";
+  const lastSnapshotLabel = data
+    ? new Date(data.meta.current_snapshot).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "";
 
   const fetchTrends = useCallback(async () => {
     try {
@@ -450,7 +472,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-2.5">
           <Wordmark className="h-5 w-auto sm:h-[22px]" />
           <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">
-            LIVE
+            US SNAPSHOT
           </span>
           <a
             href="/research"
@@ -467,10 +489,18 @@ export default function Dashboard() {
             {time
               .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
               .toUpperCase()}{" "}
-            &middot; US MARKET
+            &middot; LAST SNAPSHOT {lastSnapshotLabel.toUpperCase()} &middot; {snapshotAgeLabel.toUpperCase()}
           </div>
         </div>
       </div>
+
+      {data.meta.is_stale && (
+        <div className="px-4 sm:px-5 py-2 border-b border-[#FBBF24]/15 bg-[#FBBF24]/[0.05]">
+          <div className="font-mono text-[9px] text-[#FBBF24] tracking-[0.06em]">
+            Snapshot data is stale. Latest successful US board is {snapshotAgeLabel}.
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 sm:gap-4 px-4 sm:px-5 pt-4 pb-3.5 border-b border-white/5">
         {marketStats && (
@@ -606,7 +636,7 @@ export default function Dashboard() {
       <div className="trend-row-grid items-center px-4 sm:px-5 py-1.5 border-b border-white/5 font-mono text-[8px] font-semibold tracking-[0.1em] text-white/[0.18] sticky top-0 bg-surface z-10 no-vol">
         <span>#</span>
         <span>TREND</span>
-        <span className="text-center sparkline-cell">6S</span>
+        <span className="text-center sparkline-cell">12H</span>
         <span className="text-right">&Delta;</span>
       </div>
 
@@ -623,7 +653,7 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 sm:px-5 py-2.5 border-t border-white/[0.03] flex justify-between font-mono text-[8px] text-white/10 tracking-[0.06em]">
-        <span>TRNDEX.LIVE &middot; REFRESHED EVERY 2H</span>
+        <span>TRNDEX.LIVE &middot; US SNAPSHOT BOARD &middot; CADENCE ~2H</span>
         <span>
           {data.trends.length} TRACKING &middot;{" "}
           {data.trends.filter((t) => t.direction === "up").length}

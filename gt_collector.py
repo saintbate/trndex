@@ -16,6 +16,7 @@ import os
 import re
 import time
 import argparse
+import sys
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -205,6 +206,8 @@ def main():
         print(f"{'='*50}")
         n = fetch_and_store()
         print(f"  Stored {n} Google Trends bars\n")
+        if n <= 0:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

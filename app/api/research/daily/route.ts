@@ -6,6 +6,13 @@ export async function GET(request: NextRequest) {
   const woeid = parseInt(searchParams.get("woeid") || "23424977", 10);
   const days = Math.max(1, Math.min(90, parseInt(searchParams.get("days") || "7", 10)));
 
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Daily recap is currently available for US trends only." },
+      { status: 400 }
+    );
+  }
+
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
@@ -69,7 +76,7 @@ export async function GET(request: NextRequest) {
       .map(([date, data]) => ({ date, ...data }));
 
     return NextResponse.json({
-      meta: { woeid, days, from: cutoffStr },
+      meta: { woeid, days, from: cutoffStr, scope: "US" },
       days: days_data,
     });
   } catch (error) {

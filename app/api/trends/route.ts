@@ -4,6 +4,20 @@ import { classifyTrend } from "@/lib/categories";
 import { computeMarketRegimeScore, getPulseMeta } from "@/lib/intelligence";
 import type { TrendsResponse, Trend, Pulse } from "@/lib/types";
 
+const EXPECTED_CADENCE_MINUTES = 120;
+const STALE_THRESHOLD_MINUTES = 240;
+
+function getFreshnessMeta(snapshotAt: string | Date) {
+  const snapshotDate = new Date(snapshotAt);
+  const ageMinutes = Math.max(0, Math.round((Date.now() - snapshotDate.getTime()) / 60000));
+  return {
+    scope: "US" as const,
+    current_snapshot_age_minutes: ageMinutes,
+    expected_cadence_minutes: EXPECTED_CADENCE_MINUTES,
+    is_stale: ageMinutes > STALE_THRESHOLD_MINUTES,
+  };
+}
+
 async function getLegacyTrendsResponse(sql: ReturnType<typeof getDb>, woeid: number): Promise<TrendsResponse | null> {
   const currentTrends = await sql`
     SELECT trend_name, rank, location_name
@@ -128,6 +142,7 @@ async function getLegacyTrendsResponse(sql: ReturnType<typeof getDb>, woeid: num
       previous_snapshot: previousTime,
       location_woeid: woeid,
       location_name: locationName,
+      ...getFreshnessMeta(currentTime),
     },
     pulse: { score, label, color },
     trends,
@@ -137,6 +152,13 @@ async function getLegacyTrendsResponse(sql: ReturnType<typeof getDb>, woeid: num
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const woeid = parseInt(searchParams.get("woeid") || "23424977", 10);
+
+  if (woeid !== 23424977) {
+    return NextResponse.json(
+      { error: "Dashboard data is currently available for US trends only." },
+      { status: 400 }
+    );
+  }
 
   try {
     const sql = getDb();
@@ -268,6 +290,7 @@ export async function GET(request: NextRequest) {
         previous_snapshot: previousRun?.fetched_at ?? null,
         location_woeid: woeid,
         location_name: latestRun.location_name,
+        ...getFreshnessMeta(latestRun.fetched_at),
       },
       pulse,
       trends,

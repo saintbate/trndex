@@ -75,8 +75,23 @@ def fetch_market_prices() -> list[dict]:
     bars = []
     for symbol in MARKET_SYMBOLS:
         try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), interval="1d")
+            hist = None
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), interval="1d")
+            except Exception:
+                hist = None
+
+            if hist is None or hist.empty:
+                hist = yf.download(
+                    symbol,
+                    start=start.strftime("%Y-%m-%d"),
+                    end=end.strftime("%Y-%m-%d"),
+                    interval="1d",
+                    progress=False,
+                    auto_adjust=False,
+                    threads=False,
+                )
 
             if hist.empty:
                 print(f"  [!] No data for {symbol}")
@@ -246,15 +261,16 @@ def store_polymarket_contracts(contracts: list[dict]) -> int:
             cur.execute(
                 """
                 INSERT INTO prediction_market_bars (
-                    contract_id, bucket_start, venue, question, price_yes, price_no, volume, open_interest
+                    contract_id, bucket_start, venue, question, price_yes, price_no, volume, open_interest, liquidity
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (contract_id, bucket_start, venue) DO UPDATE SET
                     question = EXCLUDED.question,
                     price_yes = EXCLUDED.price_yes,
                     price_no = EXCLUDED.price_no,
                     volume = EXCLUDED.volume,
-                    open_interest = EXCLUDED.open_interest
+                    open_interest = EXCLUDED.open_interest,
+                    liquidity = EXCLUDED.liquidity
                 """,
                 (
                     c["contract_id"],
@@ -264,6 +280,7 @@ def store_polymarket_contracts(contracts: list[dict]) -> int:
                     c["price_yes"],
                     c["price_no"],
                     c["volume"],
+                    None,
                     c["liquidity"],
                 ),
             )
@@ -295,10 +312,11 @@ def collect_all():
     print(f"  Trndex Market Collector — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"{'='*60}")
 
-    collect_prices()
-    collect_predictions()
+    price_rows = collect_prices()
+    prediction_rows = collect_predictions()
 
     print(f"\n  Done.\n")
+    return price_rows + prediction_rows
 
 
 def main():
@@ -312,12 +330,18 @@ def main():
 
     args = parser.parse_args()
 
+    from collector import init_db
+    init_db()
+
     if args.prices:
-        collect_prices()
+        if collect_prices() <= 0:
+            sys.exit(1)
     elif args.predictions:
-        collect_predictions()
+        if collect_predictions() <= 0:
+            sys.exit(1)
     elif args.once:
-        collect_all()
+        if collect_all() <= 0:
+            sys.exit(1)
     elif args.loop:
         print(f"Starting market collector loop (every {args.interval}s). Press Ctrl+C to stop.\n")
         try:

@@ -71,6 +71,7 @@ API_URL = "https://api.x.com/2/trends/by/woeid/{woeid}"
 POLL_INTERVAL_SECONDS = 2 * 60 * 60  # 2 hours
 METHODOLOGY_VERSION = "rank-v1"
 FEATURE_REBUILD_LOOKBACK = 12
+PREDICTION_MARKET_VENUE = "polymarket"
 try:
     DEFAULT_GROK_AGENTIC_VOLUME_LIMIT = max(1, int(os.environ.get("GROK_AGENTIC_VOLUME_LIMIT", "12")))
 except ValueError:
@@ -433,6 +434,7 @@ def init_db():
                 PRIMARY KEY (contract_id, bucket_start, venue)
             )
         """)
+        cur.execute("ALTER TABLE prediction_market_bars ADD COLUMN IF NOT EXISTS liquidity NUMERIC(18,4)")
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_market_price_bars_time
             ON market_price_bars(bucket_start DESC)
@@ -571,6 +573,7 @@ def init_db():
     finally:
         cur.close()
         conn.close()
+        conn.close()
 
 
 def normalize_trend_name(name: str) -> str:
@@ -637,6 +640,17 @@ def _calculate_rank_volatility(ranks: list[int]) -> float:
     return round(variance ** 0.5, 2)
 
 
+def _known_volume(row: dict) -> int | None:
+    volume_source = row.get("volume_source")
+    tweet_count = row.get("tweet_count")
+    if volume_source in (None, "", "unknown") or tweet_count in (None, 0):
+        return None
+    try:
+        return int(tweet_count)
+    except (TypeError, ValueError):
+        return None
+
+
 def rebuild_location_intelligence(conn, woeid: int):
     """Recompute derived feature tables for one location from raw snapshot_items."""
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -687,6 +701,12 @@ def rebuild_location_intelligence(conn, woeid: int):
         rank_history = {}
         breakout_peak = {}
         seen_before = set()
+        first_seen_at = {}
+        last_seen_at = {}
+        latest_run_id = {}
+        latest_rank = {}
+        latest_persistence = {}
+        latest_canonical_name = {}
 
         for index, run in enumerate(runs):
             current_items = items_by_run.get(run["run_id"], [])
@@ -735,14 +755,23 @@ def rebuild_location_intelligence(conn, woeid: int):
                 volatility_score = _calculate_rank_volatility(trailing_ranks)
                 exit_flag = entity_id not in next_ids
                 volume_delta_pct = None
-                if prev_tweet_count and item["tweet_count"]:
-                    volume_delta_pct = round(((item["tweet_count"] - prev_tweet_count) / prev_tweet_count) * 100, 2)
+                known_prev_volume = _known_volume(prev_item) if prev_item else None
+                known_current_volume = _known_volume(item)
+                if known_prev_volume and known_current_volume:
+                    volume_delta_pct = round(((known_current_volume - known_prev_volume) / known_prev_volume) * 100, 2)
                 spread_score = round(spread_map.get(entity_id, 1) / max(total_locations, 1), 4)
 
                 breakout_peak[entity_id] = max(breakout_peak.get(entity_id, 0.0), breakout_score)
                 seen_before.add(entity_id)
                 last_delta[entity_id] = rank_velocity
-                current_volume += item["tweet_count"] or 0
+                first_seen_at.setdefault(entity_id, run["fetched_at"])
+                last_seen_at[entity_id] = run["fetched_at"]
+                latest_run_id[entity_id] = run["run_id"]
+                latest_rank[entity_id] = item["rank"]
+                latest_persistence[entity_id] = persistence_score
+                latest_canonical_name[entity_id] = item["canonical_name"]
+                if known_current_volume is not None:
+                    current_volume += known_current_volume
                 if prev_rank is not None:
                     persisting_deltas.append(abs(rank_delta))
                 if item["category"]:
@@ -792,7 +821,8 @@ def rebuild_location_intelligence(conn, woeid: int):
             previous_volumes = []
             for trailing_run in trailing_runs:
                 trailing_items = items_by_run.get(trailing_run["run_id"], [])
-                previous_volumes.append(sum((item["tweet_count"] or 0) for item in trailing_items))
+                known_values = [_known_volume(item) for item in trailing_items]
+                previous_volumes.append(sum(value for value in known_values if value is not None))
             avg_volume = round(sum(previous_volumes) / len(previous_volumes)) if previous_volumes else current_volume
             volume_deviation_pct = round((((current_volume - avg_volume) / avg_volume) * 100), 2) if avg_volume else 0.0
             avg_rank_displacement = round(sum(persisting_deltas) / len(persisting_deltas), 2) if persisting_deltas else 0.0
@@ -830,19 +860,6 @@ def rebuild_location_intelligence(conn, woeid: int):
             )
 
         for entity_id, ranks in rank_history.items():
-            feature_rows = []
-            cur.execute(
-                """
-                SELECT tf.run_id, tf.fetched_at, tf.canonical_name, tf.rank, tf.breakout_score, tf.persistence_score
-                FROM trend_features tf
-                WHERE tf.woeid = %s AND tf.entity_id = %s
-                ORDER BY tf.fetched_at ASC
-                """,
-                (woeid, entity_id),
-            )
-            feature_rows = cur.fetchall()
-            if not feature_rows:
-                continue
             cur.execute(
                 """
                 INSERT INTO trend_lifecycle_summary (
@@ -855,20 +872,20 @@ def rebuild_location_intelligence(conn, woeid: int):
                 (
                     entity_id,
                     woeid,
-                    feature_rows[-1]["canonical_name"],
-                    feature_rows[0]["fetched_at"],
-                    feature_rows[-1]["fetched_at"],
-                    feature_rows[-1]["run_id"],
-                    len(feature_rows),
+                    latest_canonical_name.get(entity_id, "Unknown"),
+                    first_seen_at.get(entity_id),
+                    last_seen_at.get(entity_id),
+                    latest_run_id.get(entity_id),
+                    len(ranks),
                     reentry_count.get(entity_id, 0),
                     current_streak.get(entity_id, 0),
                     longest_streak.get(entity_id, current_streak.get(entity_id, 0)),
                     min(ranks),
-                    feature_rows[-1]["rank"],
+                    latest_rank.get(entity_id),
                     round(sum(ranks) / len(ranks), 2),
                     float(statistics.median(ranks)),
                     breakout_peak.get(entity_id, 0.0),
-                    feature_rows[-1]["persistence_score"],
+                    latest_persistence.get(entity_id, 0.0),
                     METHODOLOGY_VERSION,
                 ),
             )
@@ -884,7 +901,7 @@ def rebuild_location_intelligence(conn, woeid: int):
             """,
             (woeid,),
         )
-    conn.commit()
+        conn.commit()
     except Exception as exc:
         conn.rollback()
         cur.execute(
@@ -988,7 +1005,7 @@ def backfill_intelligence():
             rebuild_location_intelligence(conn, woeid)
     finally:
         cur.close()
-    conn.close()
+        conn.close()
 
     return migrated_groups
 
@@ -1035,12 +1052,13 @@ def store_snapshot(
         )
 
         if source_status in ("success", "backfilled") and trends:
-    for i, trend in enumerate(trends):
+            for i, trend in enumerate(trends):
                 name = trend.get("trend_name", "Unknown")
                 entity_id, _, _ = ensure_trend_entity(cur, name, now)
                 category = categories.get(name)
                 meta_description = trend.get("meta_description")
                 volume_source = trend.get("volume_source") or ("api" if trend.get("tweet_count") else "unknown")
+                tweet_count = trend.get("tweet_count", 0) or 0
                 cur.execute(
                     """
                     INSERT INTO snapshot_items (
@@ -1061,13 +1079,13 @@ def store_snapshot(
                     (
                         run_id,
                         entity_id,
-                now,
-                woeid,
-                location_name,
+                        now,
+                        woeid,
+                        location_name,
                         name,
                         normalize_trend_name(name),
                         i + 1,
-                        trend.get("tweet_count", 0) or 0,
+                        tweet_count,
                         meta_description,
                         volume_source,
                         category,
@@ -1088,19 +1106,19 @@ def store_snapshot(
                         woeid,
                         location_name,
                         name,
-                trend.get("tweet_count", 0) or 0,
-                i + 1,
+                        tweet_count,
+                        i + 1,
                         category,
                         run_id,
                         meta_description,
                         volume_source,
-            ),
-        )
+                    ),
+                )
 
-    conn.commit()
+        conn.commit()
         if source_status in ("success", "backfilled") and trends:
             rebuild_location_intelligence(conn, woeid)
-    return len(trends)
+        return len(trends)
     finally:
         cur.close()
         conn.close()
@@ -1550,7 +1568,7 @@ def compute_pulse(woeid: int = 23424977, window_hours: int = 24):
     """, (woeid, cutoff, latest_time))
     window_rows = cur.fetchall()
     cur.close()
-        conn.close()
+    conn.close()
 
     if not window_rows:
         return {
@@ -1930,7 +1948,8 @@ def main():
     elif args.export:
         export_json(args.woeid)
     elif args.once:
-        collect_all(args.grok_limit)
+        if collect_all(args.grok_limit) <= 0:
+            sys.exit(1)
     elif args.loop:
         print(f"Starting collector loop (every {args.interval}s). Press Ctrl+C to stop.\n")
         try:
