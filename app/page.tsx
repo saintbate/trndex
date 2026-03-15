@@ -21,6 +21,7 @@ interface WeeklyAnalysis {
     last_regime: string | null;
   };
   category_breakdown: Record<string, number>;
+  category_share?: Record<string, { count: number; share_pct: number; momentum_pp: number }>;
   top_trends: Array<{
     trend_name: string;
     category: string | null;
@@ -216,8 +217,10 @@ function AnalysisPanel({
     );
   }
 
-  const { board_stats, category_breakdown, top_trends, narrative_arcs, meta } = analysis;
-  const cats = Object.entries(category_breakdown).sort((a, b) => b[1] - a[1]);
+  const { board_stats, category_breakdown, category_share, top_trends, narrative_arcs, meta } = analysis;
+  const cats = category_share
+    ? Object.entries(category_share).sort((a, b) => b[1].share_pct - a[1].share_pct)
+    : Object.entries(category_breakdown).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="px-4 sm:px-5 py-4 border-b border-white/5 bg-black/20 space-y-4">
@@ -248,17 +251,26 @@ function AnalysisPanel({
 
       {cats.length > 0 && (
         <div>
-          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">CATEGORY BREAKDOWN</div>
+          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">CATEGORY SHARE & MOMENTUM</div>
           <div className="flex flex-wrap gap-1.5">
-            {cats.map(([cat, n]) => {
+            {cats.map(([cat, v]) => {
               const cc = CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? "rgba(255,255,255,0.3)";
+              const isShare = typeof v === "object" && "share_pct" in v;
+              const share = isShare ? (v as { share_pct: number; momentum_pp: number }).share_pct : 0;
+              const mom = isShare ? (v as { momentum_pp: number }).momentum_pp : 0;
+              const momColor = mom > 0 ? "#00E676" : mom < 0 ? "#FF5252" : "rgba(255,255,255,0.3)";
               return (
                 <span
                   key={cat}
                   className="font-mono text-[8px] px-1.5 py-0.5 rounded"
                   style={{ background: `${cc}15`, border: `1px solid ${cc}30`, color: cc }}
                 >
-                  {cat} {n}
+                  {cat} {isShare ? `${share}%` : v}
+                  {isShare && mom !== 0 && (
+                    <span className="ml-0.5" style={{ color: momColor }}>
+                      {mom > 0 ? `+${mom}` : mom}pp
+                    </span>
+                  )}
                 </span>
               );
             })}

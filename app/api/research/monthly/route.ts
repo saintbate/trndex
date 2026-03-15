@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
 const WINDOW_HOURS = 24 * 30; // 30 days
+const PRIOR_WINDOW_HOURS = 24 * 60; // 60 days for prior month
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const woeid = parseInt(searchParams.get("woeid") || "23424977", 10);
   const limit = Math.max(5, Math.min(50, parseInt(searchParams.get("limit") || "25", 10)));
 
-  const cutoff = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const now = Date.now();
+  const cutoff = new Date(now - WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const priorCutoff = new Date(now - PRIOR_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
   const sql = getDb();
 
   try {
-    const [runs, featureRows, marketRows] = await Promise.all([
+    const [runs, featureRows, priorFeatureRows, marketRows] = await Promise.all([
       sql`
         SELECT run_id, fetched_at
         FROM snapshot_runs
@@ -29,6 +32,13 @@ export async function GET(request: NextRequest) {
         WHERE woeid = ${woeid}
           AND fetched_at >= ${cutoff}
         ORDER BY fetched_at ASC
+      `,
+      sql`
+        SELECT entity_id, category
+        FROM trend_features
+        WHERE woeid = ${woeid}
+          AND fetched_at >= ${priorCutoff}
+          AND fetched_at < ${cutoff}
       `,
       sql`
         SELECT turnover_ratio, new_entry_count, exit_count, board_size,
@@ -103,6 +113,35 @@ export async function GET(request: NextRequest) {
       categoryBreakdown[cat] = (categoryBreakdown[cat] ?? 0) + 1;
     }
 
+    const priorByEntity = new Map<number, string>();
+    for (const row of priorFeatureRows as Record<string, unknown>[]) {
+      const eid = row.entity_id as number;
+      if (!priorByEntity.has(eid)) {
+        priorByEntity.set(eid, (row.category as string) ?? "Untagged");
+      }
+    }
+    const priorCategoryBreakdown: Record<string, number> = {};
+    for (const cat of Array.from(priorByEntity.values())) {
+      const c = cat || "Untagged";
+      priorCategoryBreakdown[c] = (priorCategoryBreakdown[c] ?? 0) + 1;
+    }
+
+    const totalEntities = Array.from(byEntity.values()).length;
+    const priorTotalEntities = priorByEntity.size;
+    const categoryShare: Record<string, { count: number; share_pct: number; momentum_pp: number }> = {};
+    const allCats = new Set([...Object.keys(categoryBreakdown), ...Object.keys(priorCategoryBreakdown)]);
+    for (const cat of Array.from(allCats)) {
+      const count = categoryBreakdown[cat] ?? 0;
+      const priorCount = priorCategoryBreakdown[cat] ?? 0;
+      const share = totalEntities > 0 ? (count / totalEntities) * 100 : 0;
+      const priorShare = priorTotalEntities > 0 ? (priorCount / priorTotalEntities) * 100 : 0;
+      categoryShare[cat] = {
+        count,
+        share_pct: Math.round(share * 10) / 10,
+        momentum_pp: Math.round((share - priorShare) * 10) / 10,
+      };
+    }
+
     const totalNewEntries = (marketRows as Record<string, unknown>[]).reduce(
       (s, r) => s + ((r.new_entry_count as number) ?? 0),
       0
@@ -158,6 +197,7 @@ export async function GET(request: NextRequest) {
         last_regime: lastRegime,
       },
       category_breakdown: categoryBreakdown,
+      category_share: categoryShare,
       top_trends: topTrends,
       narrative_arcs: narrativeArcs,
     });

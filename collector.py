@@ -518,6 +518,55 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_market_features_woeid_time
             ON market_features(woeid, fetched_at DESC)
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_trend_rollup (
+                bucket_date DATE NOT NULL,
+                woeid INTEGER NOT NULL,
+                entity_id INTEGER NOT NULL REFERENCES trend_entities(entity_id),
+                trend_name_raw TEXT NOT NULL,
+                canonical_name TEXT NOT NULL,
+                category TEXT,
+                appearances INTEGER NOT NULL DEFAULT 0,
+                avg_rank REAL NOT NULL DEFAULT 0,
+                best_rank INTEGER NOT NULL,
+                PRIMARY KEY (bucket_date, woeid, entity_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_category_rollup (
+                bucket_date DATE NOT NULL,
+                woeid INTEGER NOT NULL,
+                category TEXT NOT NULL,
+                trend_count INTEGER NOT NULL DEFAULT 0,
+                share_pct REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (bucket_date, woeid, category)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_board_summary (
+                bucket_date DATE NOT NULL,
+                woeid INTEGER NOT NULL,
+                location_name TEXT NOT NULL,
+                snapshot_count INTEGER NOT NULL DEFAULT 0,
+                distinct_trends INTEGER NOT NULL DEFAULT 0,
+                new_entries INTEGER NOT NULL DEFAULT 0,
+                exits INTEGER NOT NULL DEFAULT 0,
+                avg_turnover REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (bucket_date, woeid)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_daily_trend_rollup_date
+            ON daily_trend_rollup(bucket_date DESC, woeid)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_daily_category_rollup_date
+            ON daily_category_rollup(bucket_date DESC, woeid)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_daily_board_summary_date
+            ON daily_board_summary(bucket_date DESC, woeid)
+        """)
         conn.commit()
     finally:
         cur.close()
