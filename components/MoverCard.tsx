@@ -22,7 +22,7 @@ export default function MoverCard({
 
   return (
     <div
-      className="flex-1 min-w-[130px] rounded-lg p-3"
+      className="rounded-lg p-3 h-full min-h-[108px] min-w-0"
       style={{
         background: `${c}06`,
         border: `1px solid ${c}15`,
@@ -53,12 +53,12 @@ export default function MoverCard({
           </span>
         )}
       </div>
-      <div className="font-grotesk text-[15px] font-bold text-white mb-0.5 tracking-tight">
+      <div className="font-grotesk text-[14px] sm:text-[15px] font-bold text-white mb-1 tracking-tight leading-5 break-words">
         {trendName}
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
         <span
-          className="font-mono text-[19px] font-extrabold"
+          className="font-mono text-[17px] sm:text-[19px] font-extrabold"
           style={{ color: c }}
         >
           {isGainer ? "+" : ""}

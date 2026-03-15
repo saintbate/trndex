@@ -17,14 +17,16 @@ export default function TickerTape({ trends }: TickerTapeProps) {
   const items = [...trends, ...trends, ...trends];
 
   return (
-    <div className="overflow-hidden whitespace-nowrap py-1.5 border-b border-white/5 bg-black/50">
+    <div className="overflow-hidden whitespace-nowrap py-1 sm:py-1.5 border-b border-white/5 bg-black/50">
       <div className="inline-block animate-ticker-scroll">
         {items.map((t, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1.5 mr-6 font-mono text-[10px]"
+            className="inline-flex items-center gap-1.5 mr-4 sm:mr-6 font-mono text-[9px] sm:text-[10px]"
           >
-            <span className="text-white/40 font-medium">{t.trend_name}</span>
+            <span className="text-white/40 font-medium inline-block max-w-[110px] sm:max-w-[150px] truncate align-bottom">
+              {t.trend_name}
+            </span>
             <span
               className="font-bold"
               style={{ color: t.direction === "up" ? "#00E676" : t.direction === "down" ? "#FF5252" : "rgba(255,255,255,0.3)" }}

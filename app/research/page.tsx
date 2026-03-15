@@ -458,7 +458,7 @@ export default function ResearchPage() {
 
   return (
     <div className="min-h-screen bg-[#07070C] text-white research-shell">
-      <header className="border-b border-white/5 px-4 sm:px-5 py-3 flex items-center justify-between">
+      <header className="border-b border-white/5 px-4 sm:px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <Link href="/" className="flex items-center gap-2">
           <Wordmark className="h-5 w-auto" />
           <span className="font-mono text-[8px] text-white/25 tracking-[0.1em]">RESEARCH</span>
@@ -471,7 +471,7 @@ export default function ResearchPage() {
         </Link>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-5 py-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-5 py-6 sm:py-8">
         <div className="mb-8">
           <h1 className="font-grotesk text-2xl sm:text-3xl font-bold text-white/95 tracking-tight mb-1">
             Trend × Market
@@ -479,7 +479,7 @@ export default function ResearchPage() {
           <p className="font-mono text-[11px] text-white/40 tracking-[0.04em]">
             US-only snapshot research. Compare historical attention with market prices or prediction markets and inspect timing, breakout history, and recent board context.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex gap-2 overflow-x-auto hide-scrollbar pb-1">
             <span className="font-mono text-[8px] px-2.5 py-1 rounded-full border border-[#00E676]/20 bg-[#00E676]/[0.08] text-[#00E676]">
               US-ONLY DATASET
             </span>
@@ -492,7 +492,7 @@ export default function ResearchPage() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-8 flex-wrap research-panel">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_auto_minmax(0,1fr)_7rem] gap-4 mb-8 research-panel">
           <div className="flex-1 min-w-[200px]">
             <label className="font-mono text-[9px] text-white/35 tracking-[0.08em] block mb-1.5">
               TREND SEARCH
@@ -515,7 +515,7 @@ export default function ResearchPage() {
               SEARCHES THE US TREND HISTORY, NOT JUST THE CURRENT BOARD
             </div>
             {quickTrendOptions.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex gap-2 overflow-x-auto hide-scrollbar pb-1">
                 {quickTrendOptions.map((trend) => (
                   <button
                     key={trend.entity_id}
@@ -532,7 +532,7 @@ export default function ResearchPage() {
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => { setMarketType("symbol"); setSelectedMarket(""); }}
               className={`px-3 py-2 rounded font-mono text-[10px] transition-colors ${
@@ -577,7 +577,7 @@ export default function ResearchPage() {
             </select>
           </div>
 
-          <div className="w-28">
+          <div className="w-full xl:w-28">
             <label className="font-mono text-[9px] text-white/35 tracking-[0.08em] block mb-1.5">
               WINDOW
             </label>
@@ -767,9 +767,9 @@ export default function ResearchPage() {
 
         {!loading && correlation && chartData.length > 0 && (
           <>
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="mb-4 flex gap-2 overflow-x-auto hide-scrollbar pb-1">
               <span
-                className="font-mono text-[9px] px-2.5 py-1 rounded-full border"
+                className="font-mono text-[9px] px-2.5 py-1 rounded-full border whitespace-nowrap"
                 style={{
                   color: conviction.tone,
                   background: conviction.bg,
@@ -778,16 +778,16 @@ export default function ResearchPage() {
               >
                 {conviction.label}
               </span>
-              <span className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/55">
+              <span className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/55 whitespace-nowrap">
                 {timingLabel}
               </span>
-              <span className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/45">
+              <span className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/45 whitespace-nowrap">
                 {relationshipLabel.toUpperCase()} RELATIONSHIP
               </span>
               <button
                 type="button"
                 onClick={() => setShowRatingHelp((current) => !current)}
-                className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/45 hover:text-white/75 hover:border-white/20 transition-colors"
+                className="font-mono text-[9px] px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.03] text-white/45 hover:text-white/75 hover:border-white/20 transition-colors whitespace-nowrap"
               >
                 WHY THIS RATING?
               </button>
@@ -803,7 +803,7 @@ export default function ResearchPage() {
                   exist after alignment. Right now the reading is <span style={{ color: conviction.tone }}>{r != null ? r.toFixed(3) : "n/a"}</span> across{" "}
                   <span className="text-white/75">{correlation.meta.data_points}</span> paired observations.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2 font-mono text-[9px] text-white/35">
+                <div className="mt-3 flex gap-2 overflow-x-auto hide-scrollbar pb-1 font-mono text-[9px] text-white/35">
                   <span className="rounded-full border border-white/10 px-2 py-1 bg-white/[0.03]">High: |r| ≥ 0.70 and 14+ paired points</span>
                   <span className="rounded-full border border-white/10 px-2 py-1 bg-white/[0.03]">Medium: |r| ≥ 0.45 and 10+ paired points</span>
                   <span className="rounded-full border border-white/10 px-2 py-1 bg-white/[0.03]">Otherwise: exploratory / low overlap</span>
@@ -980,7 +980,7 @@ export default function ResearchPage() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex justify-between mt-2 font-mono text-[8px] text-white/25">
+              <div className="flex flex-col sm:flex-row gap-1 sm:justify-between mt-2 font-mono text-[8px] text-white/25">
                 <span style={{ color: "#00E676" }}>● Attention (breakout score)</span>
                 <span style={{ color: "#FBBF24" }}>● {marketLabel}</span>
               </div>
@@ -1052,8 +1052,8 @@ export default function ResearchPage() {
         )}
 
         {!selectedTrend && !selectedMarket && (
-          <div className="mt-12 p-8 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
-            <div className="font-mono text-[11px] text-white/40 max-w-md mx-auto">
+          <div className="mt-10 sm:mt-12 p-6 sm:p-8 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
+            <div className="font-mono text-[10px] sm:text-[11px] text-white/40 max-w-md mx-auto leading-5">
               Select a trend and a market to see how attention correlates with price or prediction odds.
               Lower rank = higher attention. Breakout score measures momentum.
             </div>

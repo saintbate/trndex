@@ -157,7 +157,7 @@ function EmptyMoverCard({ type }: { type: "gainer" | "loser" }) {
   const c = type === "gainer" ? "#00E676" : "#FF5252";
   return (
     <div
-      className="flex-1 min-w-[130px] rounded-lg p-3 flex flex-col items-center justify-center"
+      className="rounded-lg p-3 flex flex-col items-center justify-center h-full min-h-[108px]"
       style={{ background: `${c}04`, border: `1px solid ${c}10` }}
     >
       <div className="font-mono text-[8.5px] font-bold tracking-[0.1em] text-white/25 mb-2">
@@ -468,28 +468,31 @@ export default function Dashboard() {
     <div className="min-h-screen bg-surface text-white">
       <TickerTape trends={data.trends} />
 
-      <div className="flex justify-between items-center px-4 sm:px-5 pt-3.5 pb-2.5 border-b border-white/5 flex-wrap gap-2.5">
-        <div className="flex items-center gap-2.5">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-5 pt-3.5 pb-2.5 border-b border-white/5 gap-3">
+        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start gap-2.5">
           <Wordmark className="h-5 w-auto sm:h-[22px]" />
-          <span className="font-mono text-[9px] font-bold text-up tracking-[0.1em]">
+          <span className="font-mono text-[8.5px] sm:text-[9px] font-bold text-up tracking-[0.1em]">
             US SNAPSHOT
           </span>
           <a
             href="/research"
-            className="font-mono text-[9px] font-semibold text-white/60 hover:text-white/90 tracking-[0.08em] ml-3 px-2 py-0.5 rounded border border-white/10 hover:border-white/20 transition-colors"
+            className="font-mono text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white/90 tracking-[0.08em] ml-auto sm:ml-3 px-2 py-0.5 rounded border border-white/10 hover:border-white/20 transition-colors"
           >
             RESEARCH
           </a>
         </div>
-        <div className="text-right">
-          <div className="font-mono text-[15px] font-bold text-white/70">
+        <div className="w-full sm:w-auto flex items-start justify-between sm:block">
+          <div className="font-mono text-[14px] sm:text-[15px] font-bold text-white/70 text-left sm:text-right">
             {time.toLocaleTimeString("en-US", { hour12: false })}
           </div>
-          <div className="font-mono text-[8.5px] text-white/[0.18] tracking-[0.06em]">
-            {time
-              .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-              .toUpperCase()}{" "}
-            &middot; LAST SNAPSHOT {lastSnapshotLabel.toUpperCase()} &middot; {snapshotAgeLabel.toUpperCase()}
+          <div className="font-mono text-[8px] sm:text-[8.5px] text-white/[0.18] tracking-[0.06em] leading-4 text-left sm:text-right">
+            <div>
+              {time
+                .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                .toUpperCase()}{" "}
+              &middot; US BOARD
+            </div>
+            <div>LAST SNAPSHOT {lastSnapshotLabel.toUpperCase()} &middot; {snapshotAgeLabel.toUpperCase()}</div>
           </div>
         </div>
       </div>
@@ -504,14 +507,31 @@ export default function Dashboard() {
 
       <div className="flex flex-col gap-3 sm:gap-4 px-4 sm:px-5 pt-4 pb-3.5 border-b border-white/5">
         {marketStats && (
-          <div
-            className="font-mono text-[13px] sm:text-[15px] font-bold tracking-[0.08em] text-white/90 text-center"
-            style={{ color: data.pulse.color }}
-          >
-            {marketStats.newEntries} NEW TREND{marketStats.newEntries === 1 ? "" : "S"} · AVG MOVEMENT: {marketStats.avgDisplacement.toFixed(1)} POSITIONS · BOARD STATUS: {data.pulse.label}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+              <div className="font-mono text-[7.5px] text-white/22 tracking-[0.08em]">NEW TRENDS</div>
+              <div className="font-mono text-[14px] sm:text-[15px] font-bold text-[#FBBF24] mt-1">
+                {marketStats.newEntries}
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+              <div className="font-mono text-[7.5px] text-white/22 tracking-[0.08em]">AVG MOVEMENT</div>
+              <div className="font-mono text-[14px] sm:text-[15px] font-bold text-white/85 mt-1">
+                {marketStats.avgDisplacement.toFixed(1)} POS
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+              <div className="font-mono text-[7.5px] text-white/22 tracking-[0.08em]">BOARD STATUS</div>
+              <div
+                className="font-mono text-[14px] sm:text-[15px] font-bold mt-1"
+                style={{ color: data.pulse.color }}
+              >
+                {data.pulse.label}
+              </div>
+            </div>
           </div>
         )}
-        <div className="flex gap-2.5 flex-wrap flex-1 min-w-0 sm:min-w-[280px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
           {topGainer ? (
             <MoverCard
               trendName={topGainer.trend_name}
@@ -533,7 +553,7 @@ export default function Dashboard() {
             <EmptyMoverCard type="loser" />
           )}
           {topBreakouts.length > 0 ? (
-            <div className="flex-1 min-w-[140px] p-3 rounded-lg flex flex-col" style={{ background: "#FBBF2406", border: "1px solid #FBBF2418" }}>
+            <div className="p-3 rounded-lg flex flex-col h-full min-h-[108px]" style={{ background: "#FBBF2406", border: "1px solid #FBBF2418" }}>
               <div className="font-mono text-[8.5px] font-bold tracking-[0.1em] text-[#FBBF24]/80 mb-2">
                 BREAKING OUT
               </div>
@@ -545,7 +565,7 @@ export default function Dashboard() {
             </div>
           ) : null}
           {marketStats && (
-            <div className="flex-1 min-w-[140px] p-3 bg-white/[0.015] border border-white/5 rounded-lg">
+            <div className="p-3 bg-white/[0.015] border border-white/5 rounded-lg h-full min-h-[108px]">
               <div className="font-mono text-[8.5px] font-bold tracking-[0.1em] text-white/25 mb-1.5">
                 MARKET SUMMARY
               </div>
@@ -572,8 +592,9 @@ export default function Dashboard() {
         />
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-5 py-2 border-b border-white/5 gap-1.5">
-        <div className="flex gap-1 flex-wrap items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-5 py-2 border-b border-white/5 gap-2">
+        <div className="w-full sm:w-auto overflow-x-auto hide-scrollbar">
+          <div className="flex gap-1 flex-nowrap sm:flex-wrap items-center min-w-max pr-2">
           {SORT_OPTIONS.map(([key, label]) => (
             <button
               key={key}
@@ -611,8 +632,10 @@ export default function Dashboard() {
           >
             MONTHLY
           </button>
+          </div>
         </div>
-        <div className="flex gap-1 flex-wrap overflow-x-auto max-w-full hide-scrollbar">
+        <div className="w-full overflow-x-auto max-w-full hide-scrollbar">
+          <div className="flex gap-1 flex-nowrap sm:flex-wrap min-w-max pr-2">
           {FILTER_OPTIONS.map((cat) => {
             const cc = cat === "All" ? "rgba(255,255,255,0.08)" : CATEGORY_COLORS[cat];
             return (
@@ -630,6 +653,7 @@ export default function Dashboard() {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
 
@@ -652,7 +676,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="px-4 sm:px-5 py-2.5 border-t border-white/[0.03] flex justify-between font-mono text-[8px] text-white/10 tracking-[0.06em]">
+      <div className="px-4 sm:px-5 py-2.5 border-t border-white/[0.03] flex flex-col sm:flex-row gap-1.5 sm:justify-between font-mono text-[8px] text-white/10 tracking-[0.06em]">
         <span>TRNDEX.LIVE &middot; US SNAPSHOT BOARD &middot; CADENCE ~2H</span>
         <span>
           {data.trends.length} TRACKING &middot;{" "}
