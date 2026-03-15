@@ -9,6 +9,33 @@ import TrendRow from "@/components/TrendRow";
 import Wordmark from "@/components/Wordmark";
 
 type SortMode = "rank" | "momentum" | "gainers" | "losers" | "breakouts";
+type AnalysisPeriod = "weekly" | "monthly" | null;
+
+interface WeeklyAnalysis {
+  meta: { period: string; runs_in_window: number; from: string };
+  board_stats: {
+    total_new_entries: number;
+    total_exits: number;
+    avg_turnover_ratio: number;
+    avg_rank_displacement: number;
+    last_regime: string | null;
+  };
+  category_breakdown: Record<string, number>;
+  top_trends: Array<{
+    trend_name: string;
+    category: string | null;
+    appearances: number;
+    avg_rank: number;
+    best_rank: number;
+    avg_persistence: number;
+  }>;
+  narrative_arcs: Array<{
+    trend_name: string;
+    category: string | null;
+    best_rank: number;
+    appearances: number;
+  }>;
+}
 
 const SORT_OPTIONS: [SortMode, string][] = [
   ["rank", "RANK"],
@@ -139,6 +166,136 @@ function EmptyMoverCard({ type }: { type: "gainer" | "loser" }) {
   );
 }
 
+function AnalysisPanel({
+  period,
+  onClose,
+}: {
+  period: "weekly" | "monthly";
+  onClose: () => void;
+}) {
+  const [analysis, setAnalysis] = useState<WeeklyAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setErr(null);
+    fetch(`/api/research/${period}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to fetch"))))
+      .then(setAnalysis)
+      .catch((e) => setErr(e instanceof Error ? e.message : "Error"))
+      .finally(() => setLoading(false));
+  }, [period]);
+
+  if (loading) {
+    return (
+      <div className="px-4 sm:px-5 py-4 border-b border-white/5 bg-black/20">
+        <div className="flex justify-between items-center mb-3">
+          <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-white/40">
+            {period === "weekly" ? "WEEKLY" : "MONTHLY"} ANALYSIS
+          </span>
+          <button onClick={onClose} className="font-mono text-[8px] text-white/25 hover:text-white/50">
+            CLOSE
+          </button>
+        </div>
+        <div className="h-24 rounded bg-white/[0.03] animate-pulse" />
+      </div>
+    );
+  }
+
+  if (err || !analysis) {
+    return (
+      <div className="px-4 sm:px-5 py-4 border-b border-white/5 bg-black/20">
+        <div className="flex justify-between items-center">
+          <span className="font-mono text-[9px] text-white/40">{err || "No data"}</span>
+          <button onClick={onClose} className="font-mono text-[8px] text-white/25 hover:text-white/50">
+            CLOSE
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const { board_stats, category_breakdown, top_trends, narrative_arcs, meta } = analysis;
+  const cats = Object.entries(category_breakdown).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="px-4 sm:px-5 py-4 border-b border-white/5 bg-black/20 space-y-4">
+      <div className="flex justify-between items-center">
+        <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-white/50">
+          {period === "weekly" ? "WEEKLY" : "MONTHLY"} ANALYSIS · {meta.runs_in_window} SNAPSHOTS
+        </span>
+        <button onClick={onClose} className="font-mono text-[8px] text-white/25 hover:text-white/50">
+          CLOSE
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { l: "NEW ENTRIES", v: board_stats.total_new_entries, c: "#FBBF24" },
+          { l: "EXITS", v: board_stats.total_exits, c: "#FF5252" },
+          { l: "AVG TURNOVER", v: board_stats.avg_turnover_ratio.toFixed(2), c: "rgba(255,255,255,0.6)" },
+          { l: "REGIME", v: board_stats.last_regime ?? "—", c: "rgba(255,255,255,0.5)" },
+        ].map((s) => (
+          <div key={s.l} className="rounded bg-white/[0.03] border border-white/5 p-2">
+            <div className="font-mono text-[7px] text-white/25 tracking-[0.08em]">{s.l}</div>
+            <div className="font-mono text-[12px] font-bold mt-0.5" style={{ color: s.c }}>
+              {String(s.v)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {cats.length > 0 && (
+        <div>
+          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">CATEGORY BREAKDOWN</div>
+          <div className="flex flex-wrap gap-1.5">
+            {cats.map(([cat, n]) => {
+              const cc = CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? "rgba(255,255,255,0.3)";
+              return (
+                <span
+                  key={cat}
+                  className="font-mono text-[8px] px-1.5 py-0.5 rounded"
+                  style={{ background: `${cc}15`, border: `1px solid ${cc}30`, color: cc }}
+                >
+                  {cat} {n}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {top_trends.length > 0 && (
+        <div>
+          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">TOP TRENDS (BY AVG RANK)</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-white/70">
+            {top_trends.slice(0, 10).map((t) => (
+              <span key={t.trend_name}>
+                {t.trend_name}
+                <span className="text-white/25 ml-1">#{t.best_rank}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {narrative_arcs.length > 0 && (
+        <div>
+          <div className="font-mono text-[7.5px] text-white/25 tracking-[0.08em] mb-1.5">EXITED (BEST RANK)</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-white/50">
+            {narrative_arcs.slice(0, 8).map((a) => (
+              <span key={a.trend_name}>
+                {a.trend_name} <span className="text-white/20">#{a.best_rank}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<TrendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,6 +303,7 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState<SortMode>("rank");
   const [filter, setFilter] = useState("All");
   const [time, setTime] = useState(new Date());
+  const [analysisPeriod, setAnalysisPeriod] = useState<AnalysisPeriod>(null);
   const lastSnapshot = useRef<string | null>(null);
 
   const fetchTrends = useCallback(async () => {
@@ -359,8 +517,15 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {analysisPeriod && (
+        <AnalysisPanel
+          period={analysisPeriod}
+          onClose={() => setAnalysisPeriod(null)}
+        />
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-5 py-2 border-b border-white/5 gap-1.5">
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap items-center">
           {SORT_OPTIONS.map(([key, label]) => (
             <button
               key={key}
@@ -375,6 +540,29 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          <span className="font-mono text-[7px] text-white/25 mx-0.5">|</span>
+          <button
+            onClick={() => setAnalysisPeriod(analysisPeriod === "weekly" ? null : "weekly")}
+            className="rounded px-2 py-0.5 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
+            style={{
+              background: analysisPeriod === "weekly" ? "rgba(255,255,255,0.07)" : "transparent",
+              border: analysisPeriod === "weekly" ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
+              color: analysisPeriod === "weekly" ? "#fff" : "rgba(255,255,255,0.25)",
+            }}
+          >
+            WEEKLY
+          </button>
+          <button
+            onClick={() => setAnalysisPeriod(analysisPeriod === "monthly" ? null : "monthly")}
+            className="rounded px-2 py-0.5 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
+            style={{
+              background: analysisPeriod === "monthly" ? "rgba(255,255,255,0.07)" : "transparent",
+              border: analysisPeriod === "monthly" ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
+              color: analysisPeriod === "monthly" ? "#fff" : "rgba(255,255,255,0.25)",
+            }}
+          >
+            MONTHLY
+          </button>
         </div>
         <div className="flex gap-1 flex-wrap overflow-x-auto max-w-full hide-scrollbar">
           {FILTER_OPTIONS.map((cat) => {
