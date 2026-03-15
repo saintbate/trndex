@@ -454,7 +454,7 @@ export default function Dashboard() {
           </span>
           <a
             href="/research"
-            className="font-mono text-[8px] text-white/30 hover:text-white/50 tracking-[0.08em] ml-2"
+            className="font-mono text-[9px] font-semibold text-white/60 hover:text-white/90 tracking-[0.08em] ml-3 px-2 py-0.5 rounded border border-white/10 hover:border-white/20 transition-colors"
           >
             RESEARCH
           </a>
