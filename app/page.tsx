@@ -592,7 +592,8 @@ export default function Dashboard() {
         />
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-5 py-2 border-b border-white/5 gap-2">
+      <div className="flex flex-col px-4 sm:px-5 py-2 border-b border-white/5 gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div className="w-full sm:w-auto overflow-x-auto hide-scrollbar">
           <div className="flex gap-1 flex-nowrap sm:flex-wrap items-center min-w-max pr-2">
           {SORT_OPTIONS.map(([key, label]) => (
@@ -609,31 +610,42 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
-          <span className="font-mono text-[7px] text-white/25 mx-0.5">|</span>
-          <button
-            onClick={() => setAnalysisPeriod(analysisPeriod === "weekly" ? null : "weekly")}
-            className="rounded px-2 py-0.5 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
-            style={{
-              background: analysisPeriod === "weekly" ? "rgba(255,255,255,0.07)" : "transparent",
-              border: analysisPeriod === "weekly" ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
-              color: analysisPeriod === "weekly" ? "#fff" : "rgba(255,255,255,0.25)",
-            }}
-          >
-            WEEKLY
-          </button>
-          <button
-            onClick={() => setAnalysisPeriod(analysisPeriod === "monthly" ? null : "monthly")}
-            className="rounded px-2 py-0.5 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
-            style={{
-              background: analysisPeriod === "monthly" ? "rgba(255,255,255,0.07)" : "transparent",
-              border: analysisPeriod === "monthly" ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
-              color: analysisPeriod === "monthly" ? "#fff" : "rgba(255,255,255,0.25)",
-            }}
-          >
-            MONTHLY
-          </button>
           </div>
         </div>
+
+        <div className="w-full sm:w-auto">
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.035] px-2 py-1.5">
+            <span className="font-mono text-[7px] text-white/30 tracking-[0.1em] whitespace-nowrap">
+              ANALYSIS
+            </span>
+            <button
+              onClick={() => setAnalysisPeriod(analysisPeriod === "weekly" ? null : "weekly")}
+              className="rounded px-2.5 py-1 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
+              style={{
+                background: analysisPeriod === "weekly" ? "rgba(124,77,255,0.18)" : "rgba(255,255,255,0.04)",
+                border: analysisPeriod === "weekly" ? "1px solid rgba(124,77,255,0.32)" : "1px solid rgba(255,255,255,0.10)",
+                color: analysisPeriod === "weekly" ? "#C3B5FF" : "rgba(255,255,255,0.68)",
+                boxShadow: analysisPeriod === "weekly" ? "0 0 18px rgba(124,77,255,0.12)" : "none",
+              }}
+            >
+              WEEKLY
+            </button>
+            <button
+              onClick={() => setAnalysisPeriod(analysisPeriod === "monthly" ? null : "monthly")}
+              className="rounded px-2.5 py-1 font-mono text-[8.5px] font-semibold tracking-[0.08em] transition-all"
+              style={{
+                background: analysisPeriod === "monthly" ? "rgba(0,230,118,0.14)" : "rgba(255,255,255,0.04)",
+                border: analysisPeriod === "monthly" ? "1px solid rgba(0,230,118,0.28)" : "1px solid rgba(255,255,255,0.10)",
+                color: analysisPeriod === "monthly" ? "#8FF5BF" : "rgba(255,255,255,0.68)",
+                boxShadow: analysisPeriod === "monthly" ? "0 0 18px rgba(0,230,118,0.10)" : "none",
+              }}
+            >
+              MONTHLY
+            </button>
+          </div>
+        </div>
+        </div>
+
         <div className="w-full overflow-x-auto max-w-full hide-scrollbar">
           <div className="flex gap-1 flex-nowrap sm:flex-wrap min-w-max pr-2">
           {FILTER_OPTIONS.map((cat) => {
